@@ -38,6 +38,7 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
     public NoesisPlayerGUI playerGUI;
     public AltarGUI altarGUI;
     public ZoneGUI zoneGUI;
+    public CombatListener combatListener;
 
     public boolean altarOpen = false;
     public long altarCloseTime = 0;
@@ -62,9 +63,10 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
         this.playerGUI = new NoesisPlayerGUI(this);
         this.altarGUI = new AltarGUI(this);
         this.zoneGUI = new ZoneGUI(this);
+        this.combatListener = new CombatListener(this);
 
         getServer().getPluginManager().registerEvents(new NoesisListener(this), this);
-        getServer().getPluginManager().registerEvents(new CombatListener(this), this);
+        getServer().getPluginManager().registerEvents(combatListener, this);
         getServer().getPluginManager().registerEvents(adminGUI, this);
         getServer().getPluginManager().registerEvents(new NoesisInfoGUI(this), this);
         getServer().getPluginManager().registerEvents(playerGUI, this);
@@ -185,6 +187,12 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
     public void onDisable() {
         if (altarBossBar != null) {
             altarBossBar.removeAll();
+        }
+        if (combatListener != null) {
+            for (java.util.UUID id : new java.util.HashSet<>(combatListener.afterimageHidden)) {
+                Player p = Bukkit.getPlayer(id);
+                if (p != null) combatListener.revealPlayer(p);
+            }
         }
     }
 
@@ -315,7 +323,28 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
         if (command.getName().equalsIgnoreCase("noesis")) {
             if (args.length == 1) {
                 completions.addAll(Arrays.asList("gui", "zone", "claim", "deposit", "mode"));
-                if (sender.hasPermission("noesis.admin")) completions.addAll(Arrays.asList("admin", "wipe", "give", "gift", "dropmode", "altar"));
+                if (sender.hasPermission("noesis.admin")) completions.addAll(Arrays.asList("admin", "wipe", "give", "gift", "dropmode", "altar", "maxcrit", "setcrit", "zoneenter", "zoneend", "blackflash", "skipstack", "setstack", "zonetree"));
+            }
+            else if (args.length == 2 && (args[0].equalsIgnoreCase("maxcrit") || args[0].equalsIgnoreCase("zoneenter") || args[0].equalsIgnoreCase("zoneend") || args[0].equalsIgnoreCase("blackflash")) && sender.hasPermission("noesis.admin")) {
+                for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
+            }
+            else if (args.length == 2 && args[0].equalsIgnoreCase("zonetree") && sender.hasPermission("noesis.admin")) {
+                completions.addAll(Arrays.asList("enable", "disable", "toggle"));
+            }
+            else if (args.length == 2 && args[0].equalsIgnoreCase("skipstack") && sender.hasPermission("noesis.admin")) {
+                completions.addAll(Arrays.asList("yellow", "orange", "red", "black"));
+            }
+            else if (args.length == 3 && args[0].equalsIgnoreCase("skipstack") && sender.hasPermission("noesis.admin")) {
+                for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
+            }
+            else if (args.length == 2 && args[0].equalsIgnoreCase("setstack") && sender.hasPermission("noesis.admin")) {
+                completions.addAll(Arrays.asList("yellow", "orange", "red"));
+            }
+            else if (args.length == 3 && args[0].equalsIgnoreCase("setstack") && sender.hasPermission("noesis.admin")) {
+                completions.addAll(Arrays.asList("1", "3", "5", "7"));
+            }
+            else if (args.length == 4 && args[0].equalsIgnoreCase("setstack") && sender.hasPermission("noesis.admin")) {
+                for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
             }
             else if (args.length == 2 && args[0].equalsIgnoreCase("zone") && sender.hasPermission("noesis.admin")) {
                 completions.addAll(Arrays.asList("heavy", "light"));
@@ -328,6 +357,15 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
             }
             else if (args.length == 2 && args[0].equalsIgnoreCase("mode")) {
                 completions.addAll(Arrays.asList("auto", "inv", "ec", "sys"));
+            }
+            else if (args.length == 2 && (args[0].equalsIgnoreCase("maxcrit") || args[0].equalsIgnoreCase("zoneenter")) && sender.hasPermission("noesis.admin")) {
+                for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
+            }
+            else if (args.length == 2 && args[0].equalsIgnoreCase("setcrit") && sender.hasPermission("noesis.admin")) {
+                for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
+            }
+            else if (args.length == 3 && args[0].equalsIgnoreCase("setcrit") && sender.hasPermission("noesis.admin")) {
+                completions.addAll(Arrays.asList("10", "30", "60", "100"));
             }
             else if (args.length == 2 && args[0].equalsIgnoreCase("give") && sender.hasPermission("noesis.admin")) {
                 for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
@@ -576,7 +614,130 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
                 return true;
             }
 
-            player.sendMessage(PREFIX + ChatColor.RED + "Unknown admin command. Use: admin, wipe, give, gift, dropmode, altar, zone.");
+            if (action.equals("maxcrit")) {
+                Player target = (args.length >= 2) ? Bukkit.getPlayer(args[1]) : player;
+                if (target == null) { player.sendMessage(PREFIX + ChatColor.RED + "Player not found."); return true; }
+                String tUuid = target.getUniqueId().toString();
+                getConfig().set("players." + tUuid + ".kills", 100);
+                saveConfig();
+                target.sendMessage(PREFIX + ChatColor.GOLD + "✨ Your Kill Stack has been MAXED to 100 by an Admin! (60% Crit Chance & VOID Tier Unlocked)");
+                target.playSound(target.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
+                if (target != player) player.sendMessage(PREFIX + ChatColor.GREEN + "Maxed Kill Stack for " + target.getName() + " (100 Kills).");
+                return true;
+            }
+
+            if (action.equals("setcrit")) {
+                if (args.length < 3) { player.sendMessage(PREFIX + ChatColor.RED + "Usage: /noesis setcrit <player> <amount>"); return true; }
+                Player target = Bukkit.getPlayer(args[1]);
+                if (target == null) { player.sendMessage(PREFIX + ChatColor.RED + "Player not found."); return true; }
+                try {
+                    int amount = Integer.parseInt(args[2]);
+                    String tUuid = target.getUniqueId().toString();
+                    getConfig().set("players." + tUuid + ".kills", amount);
+                    saveConfig();
+                    target.sendMessage(PREFIX + ChatColor.GOLD + "✨ Your Kill Stack was set to " + amount + " by an Admin!");
+                    target.playSound(target.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+                    player.sendMessage(PREFIX + ChatColor.GREEN + "Set Kill Stack for " + target.getName() + " to " + amount + ".");
+                } catch (NumberFormatException e) {
+                    player.sendMessage(PREFIX + ChatColor.RED + "Invalid number.");
+                }
+                return true;
+            }
+
+            if (action.equals("zoneenter")) {
+                Player target = (args.length >= 2) ? Bukkit.getPlayer(args[1]) : player;
+                if (target == null) { player.sendMessage(PREFIX + ChatColor.RED + "Player not found."); return true; }
+                if (combatListener != null) {
+                    combatListener.enterTheZone(target);
+                    if (target != player) player.sendMessage(PREFIX + ChatColor.GREEN + "Forced THE ZONE on " + target.getName() + ".");
+                }
+                return true;
+            }
+
+            if (action.equals("zoneend")) {
+                Player target = (args.length >= 2) ? Bukkit.getPlayer(args[1]) : player;
+                if (target == null) { player.sendMessage(PREFIX + ChatColor.RED + "Player not found."); return true; }
+                if (combatListener != null) {
+                    combatListener.endTheZone(target);
+                    if (target != player) player.sendMessage(PREFIX + ChatColor.GREEN + "Ended THE ZONE for " + target.getName() + ".");
+                }
+                return true;
+            }
+
+            if (action.equals("blackflash")) {
+                Player target = (args.length >= 2) ? Bukkit.getPlayer(args[1]) : player;
+                if (target == null) { player.sendMessage(PREFIX + ChatColor.RED + "Player not found."); return true; }
+                if (combatListener != null) {
+                    combatListener.playBlackFlashVFX(target.getLocation().add(0, 1, 0));
+                    player.sendMessage(PREFIX + ChatColor.GREEN + "Played Black Flash VFX on " + target.getName() + ".");
+                }
+                return true;
+            }
+
+            if (action.equals("skipstack")) {
+                if (args.length < 2) { player.sendMessage(PREFIX + ChatColor.RED + "Usage: /noesis skipstack <yellow|orange|red|black> [player]"); return true; }
+                String tier = args[1].toLowerCase();
+                Player target = (args.length >= 3) ? Bukkit.getPlayer(args[2]) : player;
+                if (target == null) { player.sendMessage(PREFIX + ChatColor.RED + "Player not found."); return true; }
+                if (combatListener != null) {
+                    combatListener.skipToTier(target, tier);
+                    target.sendMessage(PREFIX + ChatColor.GOLD + "⚡ Crit Stack skipped directly to: " + ChatColor.YELLOW + tier.toUpperCase() + " tier!");
+                    target.playSound(target.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.5f);
+                    if (target != player) player.sendMessage(PREFIX + ChatColor.GREEN + "Skipped crit stack for " + target.getName() + " to " + tier + " tier.");
+                }
+                return true;
+            }
+
+            if (action.equals("setstack")) {
+                if (args.length < 3) { player.sendMessage(PREFIX + ChatColor.RED + "Usage: /noesis setstack <yellow|orange|red> <amount> [player]"); return true; }
+                String tier = args[1].toLowerCase();
+                Player target = (args.length >= 4) ? Bukkit.getPlayer(args[3]) : player;
+                if (target == null) { player.sendMessage(PREFIX + ChatColor.RED + "Player not found."); return true; }
+                try {
+                    int amount = Integer.parseInt(args[2]);
+                    if (combatListener != null) {
+                        combatListener.setStacks(target, tier, amount);
+                        target.sendMessage(PREFIX + ChatColor.GOLD + "⚡ Set " + tier.toUpperCase() + " Stacks to " + amount + "!");
+                        target.playSound(target.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1.2f);
+                        if (target != player) player.sendMessage(PREFIX + ChatColor.GREEN + "Set " + tier + " stacks for " + target.getName() + " to " + amount + ".");
+                    }
+                } catch (NumberFormatException e) {
+                    player.sendMessage(PREFIX + ChatColor.RED + "Invalid amount number.");
+                }
+                return true;
+            }
+
+            if (action.equals("zonetree")) {
+                if (args.length < 2) {
+                    boolean enabled = getConfig().getBoolean("settings.zonetree_enabled", true);
+                    player.sendMessage(PREFIX + ChatColor.GRAY + "Zone Skill Tree status: " + (enabled ? ChatColor.GREEN + "ENABLED" : ChatColor.RED + "DISABLED") + ChatColor.GRAY + ". Use: /noesis zonetree <enable|disable|toggle>");
+                    return true;
+                }
+                String sub = args[1].toLowerCase();
+                if (sub.equals("enable")) {
+                    if (zoneGUI != null) zoneGUI.enableZoneTree();
+                    player.sendMessage(PREFIX + ChatColor.GREEN + "Zone Skill Tree is now ENABLED!");
+                    player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.2f);
+                } else if (sub.equals("disable")) {
+                    if (zoneGUI != null) zoneGUI.disableZoneTree();
+                    player.sendMessage(PREFIX + ChatColor.RED + "Zone Skill Tree is now DISABLED and all spent stars refunded to Cloud Storage!");
+                    player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 1f, 1f);
+                } else if (sub.equals("toggle")) {
+                    boolean enabled = getConfig().getBoolean("settings.zonetree_enabled", true);
+                    if (enabled) {
+                        if (zoneGUI != null) zoneGUI.disableZoneTree();
+                        player.sendMessage(PREFIX + ChatColor.RED + "Zone Skill Tree is now DISABLED and all spent stars refunded to Cloud Storage!");
+                        player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 1f, 1f);
+                    } else {
+                        if (zoneGUI != null) zoneGUI.enableZoneTree();
+                        player.sendMessage(PREFIX + ChatColor.GREEN + "Zone Skill Tree is now ENABLED!");
+                        player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.2f);
+                    }
+                }
+                return true;
+            }
+
+            player.sendMessage(PREFIX + ChatColor.RED + "Unknown admin command. Use: admin, wipe, give, gift, dropmode, altar, zone, maxcrit, setcrit, zoneenter, zoneend, blackflash, skipstack, setstack, zonetree.");
             return true;
         }
 

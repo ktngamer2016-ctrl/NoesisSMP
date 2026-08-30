@@ -64,8 +64,24 @@ public class NoesisPlayerGUI implements Listener {
                 "&6Triumph: &e" + storedTriumph,
                 "&cSoul: &e" + storedSoul,
                 "",
-                "&eLeft-Click &7to claim &6Triumph",
-                "&eRight-Click &7to claim &cSoul"
+                "&eLeft-Click &7to claim 1 &6Triumph",
+                "&eRight-Click &7to claim 1 &cSoul"
+        ));
+
+        // 5. Convert ALL Overflow (Below Slot 10)
+        gui.setItem(19, createItem(Material.RAW_GOLD_BLOCK, "&6&l[✦] Convert ALL Overflow",
+                "&7Converts all &e" + overflow + " Overflow",
+                "&7into Triumph Stars.",
+                "",
+                "&e▶ Click to convert all"
+        ));
+
+        // 6. Claim ALL Stars (Below Slot 16)
+        gui.setItem(25, createItem(Material.BEACON, "&a&l[✦] Claim ALL Cloud Stars",
+                "&7Withdraw all stars from Cloud",
+                "&7directly into your inventory.",
+                "",
+                "&e▶ Click to claim all"
         ));
 
         // Border Decoration
@@ -96,6 +112,7 @@ public class NoesisPlayerGUI implements Listener {
 
         Player player = (Player) event.getWhoClicked();
         Material clicked = event.getCurrentItem().getType();
+        int slot = event.getSlot();
         String uuid = player.getUniqueId().toString();
 
         // 1. Convert Overflow
@@ -126,7 +143,7 @@ public class NoesisPlayerGUI implements Listener {
             player.closeInventory();
             player.performCommand("noesis deposit");
         }
-        // 4. Claim
+        // 4. Claim 1 Star
         else if (clicked == Material.NETHER_STAR) {
             if (event.isLeftClick()) { // Claim Triumph
                 int st = plugin.getConfig().getInt("players." + uuid + ".stored_triumph", 0);
@@ -165,6 +182,61 @@ public class NoesisPlayerGUI implements Listener {
                     player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
                 }
             }
+        }
+        // 5. Convert ALL Overflow (Slot 19)
+        else if (slot == 19) {
+            int overflow = plugin.getConfig().getInt("players." + uuid + ".overflow", 0);
+            if (overflow > 0) {
+                plugin.getConfig().set("players." + uuid + ".overflow", 0);
+                plugin.saveConfig();
+                plugin.giveRewardSmart(player, "triumph", overflow);
+                player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Converted all " + overflow + " Overflow into Triumph Stars!");
+                player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.2f);
+                openGUI(player);
+            } else {
+                player.sendMessage(plugin.PREFIX + ChatColor.RED + "You don't have any Overflow to convert!");
+                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+            }
+        }
+        // 6. Claim ALL Stars from Cloud (Slot 25)
+        else if (slot == 25) {
+            int st = plugin.getConfig().getInt("players." + uuid + ".stored_triumph", 0);
+            int ss = plugin.getConfig().getInt("players." + uuid + ".stored_soul", 0);
+            if (st <= 0 && ss <= 0) {
+                player.sendMessage(plugin.PREFIX + ChatColor.RED + "No stars in Cloud Storage!");
+                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+                return;
+            }
+            int claimedT = 0, claimedS = 0;
+            while (st > 0) {
+                HashMap<Integer, ItemStack> left = player.getInventory().addItem(plugin.createStar("triumph"));
+                if (!left.isEmpty()) {
+                    player.getInventory().removeItem(plugin.createStar("triumph"));
+                    break;
+                }
+                st--;
+                claimedT++;
+            }
+            while (ss > 0) {
+                HashMap<Integer, ItemStack> left = player.getInventory().addItem(plugin.createStar("soul"));
+                if (!left.isEmpty()) {
+                    player.getInventory().removeItem(plugin.createStar("soul"));
+                    break;
+                }
+                ss--;
+                claimedS++;
+            }
+            plugin.getConfig().set("players." + uuid + ".stored_triumph", st);
+            plugin.getConfig().set("players." + uuid + ".stored_soul", ss);
+            plugin.saveConfig();
+            if (claimedT > 0 || claimedS > 0) {
+                player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Claimed " + (claimedT + claimedS) + " Stars (" + claimedT + " Triumph, " + claimedS + " Soul) from Cloud!");
+                player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 1f);
+            }
+            if (st > 0 || ss > 0) {
+                player.sendMessage(plugin.PREFIX + ChatColor.RED + "Inventory full! Some stars remain in Cloud Storage.");
+            }
+            openGUI(player);
         }
     }
 

@@ -25,6 +25,7 @@ import org.bukkit.event.player.PlayerAdvancementDoneEvent;
 import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
@@ -57,7 +58,9 @@ public class CombatListener implements Listener {
     private final Map<UUID, Long> zoneEndTime = new HashMap<>();
 
     private final Map<UUID, Long> shieldRaiseTime = new HashMap<>();
-    private final Set<UUID> pendingSwing = new HashSet<>();
+    private final Map<UUID, Long> lastAttackTime = new HashMap<>();
+    private final Map<UUID, Long> lastLeftClickTime = new HashMap<>();
+    private final Map<UUID, Boolean> lastSwingWasSpam = new HashMap<>();
     private final Map<UUID, Integer> heavyStacks = new HashMap<>();
     private final Map<UUID, Integer> heavyHitCount = new HashMap<>();
     private final Map<UUID, DomainData> activeDomains = new HashMap<>();
@@ -69,10 +72,34 @@ public class CombatListener implements Listener {
     private final Map<UUID, Map<UUID, Integer>> lightDebuffs = new HashMap<>();
     private final Map<UUID, Double> origSpeed = new HashMap<>();
     private final Map<UUID, Double> origAtkSpeed = new HashMap<>();
+    public final Set<UUID> afterimageHidden = new HashSet<>();
 
     class DomainData {
-        Location center; long endTime;
-        public DomainData(Location c, long t) { center = c; endTime = t; }
+        Location center;
+        long endTime;
+        UUID owner;
+
+        public DomainData(Location c, long t, UUID o) {
+            center = c;
+            endTime = t;
+            owner = o;
+        }
+
+        public boolean isInside(Location loc) {
+            if (loc == null || loc.getWorld() == null || center == null || center.getWorld() == null) return false;
+            if (!loc.getWorld().equals(center.getWorld())) return false;
+            double dx = loc.getX() - center.getX();
+            double dz = loc.getZ() - center.getZ();
+            return (dx * dx + dz * dz) <= (10.2 * 10.2);
+        }
+
+        public boolean isEscaping(Location from, Location to) {
+            if (from == null || to == null) return false;
+            if (from.getWorld() == null || !from.getWorld().equals(center.getWorld())) return false;
+            double fromDistSq = (from.getX() - center.getX()) * (from.getX() - center.getX()) + (from.getZ() - center.getZ()) * (from.getZ() - center.getZ());
+            double toDistSq = (to.getX() - center.getX()) * (to.getX() - center.getX()) + (to.getZ() - center.getZ()) * (to.getZ() - center.getZ());
+            return fromDistSq <= (10.2 * 10.2) && toDistSq > (9.8 * 9.8);
+        }
     }
 
     public CombatListener(NoesisSMP plugin) {
@@ -80,15 +107,179 @@ public class CombatListener implements Listener {
         startCritDecayTask();
     }
 
+    public void revealPlayer(Player p) {
+        if (p == null) return;
+        if (afterimageHidden.remove(p.getUniqueId())) {
+            for (Player other : Bukkit.getOnlinePlayers()) {
+                if (other != p && other.isOnline()) other.showPlayer(plugin, p);
+            }
+        }
+    }
+
     private void updateBaseAttackSpeed(Player p, String t1, int stack) {
         double base = 4.0;
-        if (t1.equals("heavy")) base *= 0.75;
+        if (t1.equals("heavy")) base *= 0.90; // -10% Attack speed
         else if (t1.equals("light")) base *= 1.15;
 
-        base = base * (1.0 - (stack * 0.05)); // ลบ 5% จาก Heavy U2
+        base = base * (1.0 - (stack * 0.03));
         if (p.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
             p.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(base);
         }
+    }
+
+    public long getZoneDurationMs(UUID uuid) {
+        String t1 = plugin.getConfig().getString("players." + uuid + ".zone.tier1", "none");
+        String t2 = plugin.getConfig().getString("players." + uuid + ".zone.tier2", "none");
+        String t3 = plugin.getConfig().getString("players." + uuid + ".zone.tier3", "none");
+
+        int upgrades = 0;
+        if (!t1.equals("none")) upgrades++;
+        if (!t2.equals("none")) upgrades++;
+        if (!t3.equals("none")) upgrades++;
+
+        return switch (upgrades) {
+            case 1 -> 90000L;   // 1m 30s
+            case 2 -> 120000L;  // 2m
+            case 3 -> 150000L;  // 2m 30s
+            default -> 60000L;  // No upgrade: 1m
+        };
+    }
+
+    public void setStacks(Player p, String tier, int amount) {
+        UUID uuid = p.getUniqueId();
+        lastValidHitTime.put(uuid, System.currentTimeMillis());
+        switch (tier.toLowerCase()) {
+            case "yellow" -> yellowStacks.put(uuid, amount);
+            case "orange" -> orangeStacks.put(uuid, amount);
+            case "red" -> redStacks.put(uuid, amount);
+        }
+    }
+
+    public void skipToTier(Player p, String tier) {
+        UUID uuid = p.getUniqueId();
+        lastValidHitTime.put(uuid, System.currentTimeMillis());
+        switch (tier.toLowerCase()) {
+            case "yellow" -> {
+                yellowStacks.put(uuid, 7);
+                if (plugin.getConfig().getInt("players." + uuid + ".kills", 0) < 30) {
+                    plugin.getConfig().set("players." + uuid + ".kills", 30);
+                    plugin.saveConfig();
+                }
+            }
+            case "orange" -> {
+                yellowStacks.put(uuid, 7);
+                orangeStacks.put(uuid, 7);
+                if (plugin.getConfig().getInt("players." + uuid + ".kills", 0) < 60) {
+                    plugin.getConfig().set("players." + uuid + ".kills", 60);
+                    plugin.saveConfig();
+                }
+            }
+            case "red" -> {
+                yellowStacks.put(uuid, 7);
+                orangeStacks.put(uuid, 7);
+                redStacks.put(uuid, 6);
+                if (plugin.getConfig().getInt("players." + uuid + ".kills", 0) < 100) {
+                    plugin.getConfig().set("players." + uuid + ".kills", 100);
+                    plugin.saveConfig();
+                }
+            }
+            case "black", "zone" -> enterTheZone(p);
+        }
+    }
+
+    public void playBlackFlashVFX(Location center) {
+        if (center == null) return;
+        org.bukkit.World world = center.getWorld();
+        if (world == null) return;
+
+        // 1. Crisp, balanced impact audio
+        try {
+            world.playSound(center, Sound.ENTITY_LIGHTNING_BOLT_IMPACT, 0.7f, 1.2f);
+            world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 0.5f, 0.8f);
+            world.playSound(center, Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.8f, 0.5f);
+        } catch (Throwable ignored) {}
+
+        Particle.DustOptions pureBlack = new Particle.DustOptions(org.bukkit.Color.fromRGB(10, 10, 10), 1.8f);
+        Particle.DustOptions darkVoid = new Particle.DustOptions(org.bukkit.Color.fromRGB(30, 30, 30), 1.4f);
+
+        // 2. Compact center spark & dark blast
+        try {
+            world.spawnParticle(Particle.FLASH, center, 1, 0.0, 0.0, 0.0, 0.0);
+            world.spawnParticle(Particle.EXPLOSION, center, 1, 0.0, 0.0, 0.0, 0.0);
+            world.spawnParticle(Particle.SQUID_INK, center, 12, 0.15, 0.15, 0.15, 0.03);
+            world.spawnParticle(Particle.DUST, center, 15, 0.2, 0.2, 0.2, 0.0, pureBlack);
+        } catch (Throwable ignored) {}
+
+        // 3. JJK Black Flash: 8 sleek jagged black lightning arcs (~2 blocks reach)
+        try {
+            java.util.Random rand = new java.util.Random();
+            int numTendrils = 8;
+
+            for (int i = 0; i < numTendrils; i++) {
+                double theta = rand.nextDouble() * 2 * Math.PI;
+                double phi = (rand.nextDouble() - 0.5) * Math.PI;
+                Vector dir = new Vector(Math.cos(theta) * Math.cos(phi), Math.sin(phi), Math.sin(theta) * Math.cos(phi)).normalize();
+
+                Location current = center.clone();
+                int steps = 7 + rand.nextInt(4); // ~1.8 to 2.5 blocks length
+                for (int s = 0; s < steps; s++) {
+                    Vector jitter = new Vector(
+                            (rand.nextDouble() - 0.5) * 0.3,
+                            (rand.nextDouble() - 0.5) * 0.3,
+                            (rand.nextDouble() - 0.5) * 0.3
+                    );
+                    current.add(dir.clone().multiply(0.25).add(jitter));
+
+                    // Sharp, clean black lightning points
+                    try {
+                        world.spawnParticle(Particle.DUST, current, 1, 0.0, 0.0, 0.0, 0.0, pureBlack);
+                        if (rand.nextDouble() < 0.3) {
+                            world.spawnParticle(Particle.SQUID_INK, current, 1, 0.0, 0.0, 0.0, 0.01);
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    public void enterTheZone(Player p) {
+        long now = System.currentTimeMillis();
+        UUID uuid = p.getUniqueId();
+        long durationMs = getZoneDurationMs(uuid);
+        zoneEndTime.put(uuid, now + durationMs);
+        yellowStacks.put(uuid, 0);
+        orangeStacks.put(uuid, 0);
+        redStacks.put(uuid, 0);
+
+        String t1 = plugin.getConfig().getString("players." + uuid + ".zone.tier1", "none");
+        if (t1.equals("heavy")) p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, (int)(durationMs / 50L), 0));
+        updateBaseAttackSpeed(p, t1, 0);
+
+        heavyStacks.put(uuid, 0);
+        heavyHitCount.put(uuid, 0);
+        lightDmgTaken.put(uuid, 0.0);
+        lightHits.put(uuid, 0);
+        clearLightDebuffs(uuid);
+
+        playBlackFlashVFX(p.getLocation().add(0, 1, 0));
+        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(ChatColor.DARK_GRAY + "" + ChatColor.BOLD + "☠ BLACK CRIT - THE ZONE ☠"));
+        p.sendMessage(plugin.PREFIX + ChatColor.DARK_PURPLE + ChatColor.BOLD + "☠ THE ZONE ACTIVATED (" + (durationMs / 1000) + "s) ☠");
+    }
+
+    public void endTheZone(Player p) {
+        UUID uuid = p.getUniqueId();
+        zoneEndTime.remove(uuid);
+        if (p.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
+            p.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
+        }
+        p.removePotionEffect(PotionEffectType.SLOWNESS);
+        heavyStacks.remove(uuid);
+        heavyHitCount.remove(uuid);
+        lightDmgTaken.remove(uuid);
+        lightHits.remove(uuid);
+        clearLightDebuffs(uuid);
+        revealPlayer(p);
+        p.sendMessage(plugin.PREFIX + ChatColor.GRAY + "The Zone has ended.");
     }
 
     private void startCritDecayTask() {
@@ -102,19 +293,24 @@ public class CombatListener implements Listener {
                     Map.Entry<UUID, DomainData> entry = it.next();
                     if (now > entry.getValue().endTime) { it.remove(); continue; }
                     Location center = entry.getValue().center;
+                    if (center == null || center.getWorld() == null) { it.remove(); continue; }
 
-                    for (int degree = 0; degree < 360; degree += 15) {
+                    // Render striking domain barrier cylinder wall (10 blocks radius)
+                    for (int degree = 0; degree < 360; degree += 12) {
                         double rad = Math.toRadians(degree);
-                        double x = center.getX() + (10 * Math.cos(rad));
-                        double z = center.getZ() + (10 * Math.sin(rad));
-                        center.getWorld().spawnParticle(Particle.DUST, x, center.getY() + 1, z, 1, 0, 0, 0, new Particle.DustOptions(org.bukkit.Color.MAROON, 1.5f));
+                        double x = center.getX() + (10.0 * Math.cos(rad));
+                        double z = center.getZ() + (10.0 * Math.sin(rad));
+                        for (double yOffset = 0.0; yOffset <= 3.0; yOffset += 1.0) {
+                            center.getWorld().spawnParticle(Particle.DUST, x, center.getY() + yOffset, z, 1, 0.0, 0.0, 0.0, 0.0, new Particle.DustOptions(org.bukkit.Color.RED, 1.2f));
+                        }
                     }
 
                     for (Player p : Bukkit.getOnlinePlayers()) {
-                        if (p.getUniqueId().equals(entry.getKey())) continue;
+                        if (p.getUniqueId().equals(entry.getValue().owner)) continue;
                         if (p.getWorld().equals(center.getWorld())) {
                             double dist = p.getLocation().distance(center);
                             if (dist > 9.5 && dist < 12.0) {
+                                if (p.isInsideVehicle()) p.leaveVehicle();
                                 Vector push = center.toVector().subtract(p.getLocation().toVector()).normalize().multiply(0.8).setY(0.2);
                                 p.setVelocity(push);
                                 p.playSound(p.getLocation(), Sound.BLOCK_GLASS_HIT, 0.5f, 1f);
@@ -149,13 +345,14 @@ public class CombatListener implements Listener {
 
                     if (plugin.getConfig().getBoolean("players." + uuid + ".alerts", true)) {
                         if (inZone) {
+                            long remainingSec = Math.max(0, (zoneEndTime.get(uuid) - now) / 1000);
                             String extraText = "";
                             String t2 = plugin.getConfig().getString("players." + uuid + ".zone.tier2", "none");
                             if (t2.equals("heavy")) {
                                 int s = heavyStacks.getOrDefault(uuid, 0);
-                                extraText = ChatColor.RED + " [Combo: " + s + "/3]";
+                                extraText = ChatColor.RED + " [Combo: " + s + "/5]";
                             }
-                            p.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(ChatColor.DARK_GRAY + "【 " + ChatColor.DARK_PURPLE + ChatColor.BOLD + "THE ZONE" + ChatColor.DARK_GRAY + " 】" + extraText));
+                            p.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(ChatColor.DARK_GRAY + "【 " + ChatColor.DARK_PURPLE + ChatColor.BOLD + "THE ZONE" + ChatColor.DARK_GRAY + " 】 " + ChatColor.LIGHT_PURPLE + remainingSec + "s" + extraText));
                         } else if (inCombat) {
                             int r = redStacks.getOrDefault(uuid, 0); int o = orangeStacks.getOrDefault(uuid, 0); int y = yellowStacks.getOrDefault(uuid, 0);
                             String text;
@@ -184,35 +381,45 @@ public class CombatListener implements Listener {
     }
 
     @EventHandler
-    public void onInteract(PlayerInteractEvent e) {
-        if (e.getAction().name().contains("RIGHT_CLICK")) {
-            Player p = e.getPlayer();
-            if (p.getInventory().getItemInMainHand().getType() == Material.SHIELD || p.getInventory().getItemInOffHand().getType() == Material.SHIELD) {
-                if (!p.hasCooldown(Material.SHIELD)) shieldRaiseTime.put(p.getUniqueId(), System.currentTimeMillis());
-            }
-        }
+    public void onArmSwing(PlayerAnimationEvent e) {
+        if (e.getAnimationType() != PlayerAnimationType.ARM_SWING) return;
+        Player p = e.getPlayer();
+        UUID uuid = p.getUniqueId();
+        long now = System.currentTimeMillis();
+        long timeSinceLastClick = now - lastLeftClickTime.getOrDefault(uuid, 0L);
+        lastLeftClickTime.put(uuid, now);
+
+        // If clicking faster than 250ms (>= 4 CPS), mark as spam
+        lastSwingWasSpam.put(uuid, timeSinceLastClick < 250);
     }
 
     @EventHandler
-    public void onArmSwing(PlayerAnimationEvent e) {
-        if (e.getAnimationType() != PlayerAnimationType.ARM_SWING) return;
-        Player p = e.getPlayer(); UUID uuid = p.getUniqueId();
+    public void onInteract(PlayerInteractEvent e) {
+        Player p = e.getPlayer();
+        UUID uuid = p.getUniqueId();
 
-        if (zoneEndTime.containsKey(uuid) && zoneEndTime.get(uuid) > System.currentTimeMillis()) {
-            String t2 = plugin.getConfig().getString("players." + uuid + ".zone.tier2", "none");
-            if (t2.equals("heavy")) {
-                pendingSwing.add(uuid);
-                Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                    if (pendingSwing.contains(uuid)) {
-                        pendingSwing.remove(uuid);
-                        if (heavyStacks.getOrDefault(uuid, 0) > 0) {
-                            heavyStacks.put(uuid, 0);
+        if (e.getAction().name().contains("RIGHT_CLICK")) {
+            if (p.getInventory().getItemInMainHand().getType() == Material.SHIELD || p.getInventory().getItemInOffHand().getType() == Material.SHIELD) {
+                if (!p.hasCooldown(Material.SHIELD)) shieldRaiseTime.put(uuid, System.currentTimeMillis());
+            }
+        } else if (e.getAction() == org.bukkit.event.block.Action.LEFT_CLICK_AIR || e.getAction() == org.bukkit.event.block.Action.LEFT_CLICK_BLOCK) {
+            long now = System.currentTimeMillis();
+            if (zoneEndTime.containsKey(uuid) && zoneEndTime.get(uuid) > now) {
+                String t2 = plugin.getConfig().getString("players." + uuid + ".zone.tier2", "none");
+                if (t2.equals("heavy")) {
+                    long lastHit = lastAttackTime.getOrDefault(uuid, 0L);
+                    if (now - lastHit > 250) {
+                        int cur = heavyStacks.getOrDefault(uuid, 0);
+                        if (cur > 0) {
+                            int newStack = cur - 1;
+                            heavyStacks.put(uuid, newStack);
                             String t1 = plugin.getConfig().getString("players." + uuid + ".zone.tier1", "none");
-                            updateBaseAttackSpeed(p, t1, 0);
-                            p.playSound(p.getLocation(), Sound.ENTITY_ITEM_BREAK, 0.5f, 1.5f);
+                            updateBaseAttackSpeed(p, t1, newStack);
+                            p.playSound(p.getLocation(), Sound.ENTITY_ITEM_BREAK, 0.4f, 1.5f);
+                            lastAttackTime.put(uuid, now);
                         }
                     }
-                }, 3L);
+                }
             }
         }
     }
@@ -223,6 +430,9 @@ public class CombatListener implements Listener {
 
         if (event.getDamager() instanceof Player) p = (Player) event.getDamager();
         else if (event.getDamager() instanceof org.bukkit.entity.AbstractArrow arrow && arrow.getShooter() instanceof Player shooter) { p = shooter; isRanged = true; }
+
+        if (p != null) revealPlayer(p);
+        if (event.getEntity() instanceof Player damagedPlayer) revealPlayer(damagedPlayer);
 
         if (p != null && shockwaveDamageLock.contains(p.getUniqueId())) return;
 
@@ -262,17 +472,14 @@ public class CombatListener implements Listener {
                     }
                 }
 
-                // HEAVY U1: Parry
+                // HEAVY U1: Parry (on any blocked attack with shield)
                 if (vt1.equals("heavy") && p != null && victim.isBlocking()) {
-                    long raiseTime = shieldRaiseTime.getOrDefault(vId, 0L);
-                    if (now - raiseTime <= 350) {
-                        p.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 20, 1));
-                        p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 20, 1));
-                        p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 20, 0));
-                        victim.playSound(victim.getLocation(), Sound.BLOCK_ANVIL_PLACE, 1f, 2f);
-                        victim.getWorld().spawnParticle(Particle.FLASH, p.getLocation().add(0, 1, 0), 10);
-                        if (vAlerts) victim.sendMessage(plugin.PREFIX + ChatColor.RED + "Perfect Parry! Attacker Stunned!");
-                    }
+                    p.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 40, 1));
+                    p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 40, 1));
+                    p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 40, 0));
+                    victim.playSound(victim.getLocation(), Sound.BLOCK_ANVIL_PLACE, 1f, 2f);
+                    victim.getWorld().spawnParticle(Particle.FLASH, p.getLocation().add(0, 1, 0), 10);
+                    if (vAlerts) victim.sendMessage(plugin.PREFIX + ChatColor.RED + "Parry! Attacker Stunned!");
                 }
 
                 // LIGHT U3: Break Combo
@@ -310,14 +517,18 @@ public class CombatListener implements Listener {
 
         LivingEntity targetEnt = (event.getEntity() instanceof LivingEntity) ? (LivingEntity) event.getEntity() : null;
         Location targetLoc = event.getEntity().getLocation().add(0, 1, 0);
-        boolean isValidTarget = (event.getEntity() instanceof Player) || (plugin.eventManager != null && plugin.eventManager.isEventBoss(event.getEntity().getUniqueId()));
+        boolean isValidTarget = (event.getEntity() instanceof LivingEntity) && !(event.getEntity() instanceof org.bukkit.entity.ArmorStand);
 
         boolean inZone = zoneEndTime.containsKey(uuid) && zoneEndTime.get(uuid) > now;
         String t1 = plugin.getConfig().getString("players." + uuid + ".zone.tier1", "none");
         String t2 = plugin.getConfig().getString("players." + uuid + ".zone.tier2", "none");
         String t3 = plugin.getConfig().getString("players." + uuid + ".zone.tier3", "none");
 
-        pendingSwing.remove(uuid);
+        boolean isSpam = lastSwingWasSpam.getOrDefault(uuid, false);
+        long timeSinceLastHit = now - lastAttackTime.getOrDefault(uuid, 0L);
+        boolean isChargedHit = isRanged || (!isSpam && (timeSinceLastHit >= 240 || !lastAttackTime.containsKey(uuid)));
+        lastAttackTime.put(uuid, now);
+        lastValidHitTime.put(uuid, now);
 
         boolean isVanillaCrit = false;
         if (!isRanged) { isVanillaCrit = (p.getFallDistance() > 0.0F && !p.isOnGround() && !p.hasPotionEffect(PotionEffectType.BLINDNESS) && p.getVehicle() == null && !p.isSprinting()); }
@@ -330,33 +541,19 @@ public class CombatListener implements Listener {
             // Passive Mix
             if (t1.equals("heavy")) mult *= 1.5;
             if (t1.equals("light")) {
-                p.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 100, 0));
-                p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 1));
+                p.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 40, 0));
+                p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 40, 1));
             }
 
-            // TIER 2 Mix
-            if (t2.equals("heavy") && isValidTarget) {
+            // TIER 2 & TIER 3 Mix
+            if (isValidTarget && isChargedHit) {
                 int stack = heavyStacks.getOrDefault(uuid, 0);
-                if (stack < 3) {
-                    stack++; heavyStacks.put(uuid, stack);
-                    updateBaseAttackSpeed(p, t1, stack);
-                }
-                mult *= (1.0 + (stack * 0.10));
-            } else if (t2.equals("light") && Math.random() <= 0.35) {
-                p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 20, 3));
-                ArmorStand clone = p.getWorld().spawn(p.getLocation(), ArmorStand.class);
-                clone.setVisible(false); clone.setArms(true); clone.setBasePlate(false);
-                clone.getEquipment().setArmorContents(p.getInventory().getArmorContents());
-                clone.getEquipment().setItemInMainHand(p.getInventory().getItemInMainHand());
-                clone.getEquipment().setHelmet(new ItemStack(Material.PLAYER_HEAD));
-                Bukkit.getScheduler().runTaskLater(plugin, clone::remove, 6L);
-            }
 
-            // TIER 3 Mix
-            if (t3.equals("heavy") && isValidTarget) {
-                int hits = heavyHitCount.getOrDefault(uuid, 0) + 1;
-                if (hits >= 5) {
-                    hits = 0;
+                if (t3.equals("heavy") && stack >= 5) {
+                    // Shockwave Finisher! (Triggered on next hit when at 5 stacks)
+                    heavyStacks.put(uuid, 0);
+                    updateBaseAttackSpeed(p, t1, 0);
+
                     Location loc = p.getLocation();
                     p.getWorld().playSound(loc, Sound.ENTITY_WARDEN_SONIC_BOOM, 1f, 0.5f);
                     p.getWorld().spawnParticle(Particle.EXPLOSION_EMITTER, loc, 2);
@@ -371,18 +568,105 @@ public class CombatListener implements Listener {
                     }
                     shockwaveDamageLock.remove(uuid);
 
-                    activeDomains.put(p.getUniqueId(), new DomainData(loc.clone(), now + 10000));
-                    p.sendMessage(plugin.PREFIX + ChatColor.DARK_RED + ChatColor.BOLD + "Domain Expansion: Shockwave Activated!");
+                    activeDomains.put(p.getUniqueId(), new DomainData(loc.clone(), now + 20000L, p.getUniqueId()));
+                    p.sendMessage(plugin.PREFIX + ChatColor.DARK_RED + ChatColor.BOLD + "Shockwave Activated!");
+                } else if (t2.equals("heavy")) {
+                    if (stack < 5) {
+                        stack++;
+                        heavyStacks.put(uuid, stack);
+                        updateBaseAttackSpeed(p, t1, stack);
+                    }
+                    mult *= (1.0 + (stack * 0.10));
                 }
-                heavyHitCount.put(uuid, hits);
-            } else if (t3.equals("light") && targetEnt != null) {
+            }
+
+            if (t2.equals("light") && Math.random() <= 0.15) {
+                p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 20, 3));
+                final Player attacker = p;
+                final Location cloneLoc = attacker.getLocation();
+
+                ArmorStand clone = attacker.getWorld().spawn(cloneLoc, ArmorStand.class);
+                clone.setVisible(false);
+                clone.setArms(true);
+                clone.setBasePlate(false);
+                clone.setGravity(false);
+                clone.setInvulnerable(true);
+                clone.setCollidable(false);
+                clone.setCustomNameVisible(false);
+
+                ItemStack[] armor = attacker.getInventory().getArmorContents();
+                ItemStack helmet = armor[3];
+                if (helmet != null && helmet.getType() != Material.AIR) {
+                    clone.getEquipment().setHelmet(helmet.clone());
+                }
+
+                if (armor[2] != null) clone.getEquipment().setChestplate(armor[2].clone());
+                if (armor[1] != null) clone.getEquipment().setLeggings(armor[1].clone());
+                if (armor[0] != null) clone.getEquipment().setBoots(armor[0].clone());
+
+                String handMode = plugin.getConfig().getString("players." + uuid + ".zone.hand_mode", "normal");
+                boolean isInverted = handMode.equals("invert");
+
+                if (!isInverted) {
+                    clone.getEquipment().setItemInMainHand(attacker.getInventory().getItemInMainHand());
+                    clone.getEquipment().setItemInOffHand(attacker.getInventory().getItemInOffHand());
+
+                    clone.setHeadPose(new org.bukkit.util.EulerAngle(Math.toRadians(cloneLoc.getPitch()), 0, 0));
+                    clone.setRightArmPose(new org.bukkit.util.EulerAngle(Math.toRadians(-45), Math.toRadians(25), 0));
+                    clone.setLeftArmPose(new org.bukkit.util.EulerAngle(Math.toRadians(20), 0, 0));
+                    clone.setRightLegPose(new org.bukkit.util.EulerAngle(Math.toRadians(-25), 0, 0));
+                    clone.setLeftLegPose(new org.bukkit.util.EulerAngle(Math.toRadians(25), 0, 0));
+                } else {
+                    clone.getEquipment().setItemInMainHand(attacker.getInventory().getItemInOffHand());
+                    clone.getEquipment().setItemInOffHand(attacker.getInventory().getItemInMainHand());
+
+                    clone.setHeadPose(new org.bukkit.util.EulerAngle(Math.toRadians(cloneLoc.getPitch()), 0, 0));
+                    clone.setRightArmPose(new org.bukkit.util.EulerAngle(Math.toRadians(20), 0, 0));
+                    clone.setLeftArmPose(new org.bukkit.util.EulerAngle(Math.toRadians(-45), Math.toRadians(-25), 0));
+                    clone.setRightLegPose(new org.bukkit.util.EulerAngle(Math.toRadians(25), 0, 0));
+                    clone.setLeftLegPose(new org.bukkit.util.EulerAngle(Math.toRadians(-25), 0, 0));
+                }
+
+                afterimageHidden.add(attacker.getUniqueId());
+                for (Player other : Bukkit.getOnlinePlayers()) {
+                    if (other != attacker && other.isOnline()) other.hidePlayer(plugin, attacker);
+                }
+
+                clone.getWorld().spawnParticle(Particle.PORTAL, cloneLoc.clone().add(0, 1, 0), 20, 0.3, 0.5, 0.3, 0.05);
+                clone.getWorld().spawnParticle(Particle.SWEEP_ATTACK, cloneLoc.clone().add(0, 1, 0), 2);
+                attacker.playSound(cloneLoc, Sound.ENTITY_PLAYER_ATTACK_SWEEP, 1f, 1.8f);
+
+                new BukkitRunnable() {
+                    int ticks = 0;
+                    @Override
+                    public void run() {
+                        if (!clone.isValid() || clone.isDead()) {
+                            revealPlayer(attacker);
+                            this.cancel();
+                            return;
+                        }
+                        if (ticks >= 10) {
+                            clone.remove();
+                            revealPlayer(attacker);
+                            this.cancel();
+                            return;
+                        }
+                        if (ticks % 4 == 0) {
+                            clone.getWorld().spawnParticle(Particle.DUST, clone.getLocation().add(0, 1, 0), 2, 0.2, 0.3, 0.2, 0.0, new Particle.DustOptions(org.bukkit.Color.AQUA, 1.0f));
+                        }
+                        ticks += 2;
+                    }
+                }.runTaskTimer(plugin, 0L, 2L);
+            }
+
+            if (t3.equals("light") && targetEnt != null) {
                 int hits = lightHits.getOrDefault(uuid, 0) + 1;
                 if (hits >= 3) {
                     hits = 0;
                     UUID tId = targetEnt.getUniqueId();
                     Map<UUID, Integer> dMap = lightDebuffs.computeIfAbsent(uuid, k -> new HashMap<>());
                     int stacks = dMap.getOrDefault(tId, 0) + 1;
-                    if (stacks > 10) stacks = 10;
+                    if (stacks > 5) stacks = 5;
                     dMap.put(tId, stacks);
 
                     if (!origSpeed.containsKey(tId)) {
@@ -390,9 +674,10 @@ public class CombatListener implements Listener {
                         if (targetEnt.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) origAtkSpeed.put(tId, targetEnt.getAttribute(Attribute.GENERIC_ATTACK_SPEED).getBaseValue());
                     }
 
-                    double red = stacks * 0.05;
-                    if (targetEnt.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) targetEnt.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(origSpeed.get(tId) * (1.0 - red));
-                    if (targetEnt.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) targetEnt.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(origAtkSpeed.get(tId) * (1.0 - red));
+                    double moveRed = stacks * 0.03;
+                    double atkSpeedRed = stacks * 0.03;
+                    if (targetEnt.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) targetEnt.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(origSpeed.get(tId) * (1.0 - moveRed));
+                    if (targetEnt.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) targetEnt.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(origAtkSpeed.get(tId) * (1.0 - atkSpeedRed));
 
                     targetEnt.getWorld().spawnParticle(Particle.WITCH, targetEnt.getLocation().add(0,2,0), 15);
                 }
@@ -402,11 +687,12 @@ public class CombatListener implements Listener {
             if (isVanillaCrit) mult /= 1.5;
             event.setDamage(event.getDamage() * mult);
 
+            Location critLoc = event.getEntity().getLocation().add(0, 0.35, 0);
             if (isOrangeCrit) {
-                p.getWorld().spawnParticle(Particle.DUST, targetLoc, 25, 0.5, 0.5, 0.5, new Particle.DustOptions(org.bukkit.Color.ORANGE, 2.0f));
+                p.getWorld().spawnParticle(Particle.DUST, critLoc, 8, 0.25, 0.25, 0.25, 0.0, new Particle.DustOptions(org.bukkit.Color.ORANGE, 1.2f));
                 if (alertsEnabled) p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.6f, 0.8f);
             } else {
-                p.getWorld().spawnParticle(Particle.DUST, targetLoc, 15, 0.5, 0.5, 0.5, new Particle.DustOptions(org.bukkit.Color.YELLOW, 1.5f));
+                p.getWorld().spawnParticle(Particle.DUST, critLoc, 5, 0.2, 0.2, 0.2, 0.0, new Particle.DustOptions(org.bukkit.Color.YELLOW, 1.0f));
                 if (alertsEnabled) p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.5f, 1.2f);
             }
             if (isValidTarget) lastValidHitTime.put(uuid, now);
@@ -414,20 +700,24 @@ public class CombatListener implements Listener {
         }
 
         int totalPoints = plugin.getConfig().getInt("players." + uuid + ".kills", 0) + plugin.getConfig().getInt("players." + uuid + ".overflow", 0);
-        double critChance = Math.min(60.0, totalPoints * 0.8);
+        double critChance = Math.min(50.0, totalPoints * 0.8);
         if (plugin.eventManager != null && plugin.eventManager.isPvpBoss(uuid)) critChance += 70.0;
         if (isRanged && event.getDamager() instanceof org.bukkit.entity.AbstractArrow arrow && arrow.isShotFromCrossbow()) critChance -= 10.0;
         if (critChance < 0) critChance = 0.0;
 
         if (critChance > 0 && Math.random() * 100 < critChance) {
+            Location critLoc = event.getEntity().getLocation().add(0, 0.35, 0);
             if (isValidTarget) {
                 lastValidHitTime.put(uuid, now);
 
                 int y = yellowStacks.getOrDefault(uuid, 0); int o = orangeStacks.getOrDefault(uuid, 0); int r = redStacks.getOrDefault(uuid, 0);
                 boolean isYellow = true, isOrange = false, isRed = false, isBlack = false;
 
-                if (totalPoints >= 30 && y >= 7 && Math.random() * 100 < 25.0) { isYellow = false; isOrange = true; }
-                if (isOrange && totalPoints >= 60 && o >= 7 && Math.random() * 100 < 15.0) { isOrange = false; isRed = true; }
+                if (totalPoints >= 30 && y >= 7 && Math.random() * 100 < 35.0) { isYellow = false; isOrange = true; }
+                if (isOrange && totalPoints >= 60 && o >= 7) {
+                    double redChance = Math.min(50.0, 15.0 + (r * 5.0));
+                    if (Math.random() * 100 < redChance) { isOrange = false; isRed = true; }
+                }
 
                 if (isRed && totalPoints >= 100) {
                     int nextRStack = r + 1;
@@ -440,10 +730,11 @@ public class CombatListener implements Listener {
                 }
 
                 if (isBlack) {
-                    zoneEndTime.put(uuid, now + 60000);
+                    long durationMs = getZoneDurationMs(uuid);
+                    zoneEndTime.put(uuid, now + durationMs);
                     yellowStacks.put(uuid, 0); orangeStacks.put(uuid, 0); redStacks.put(uuid, 0);
 
-                    if (t1.equals("heavy")) p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 1200, 0));
+                    if (t1.equals("heavy")) p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, (int)(durationMs / 50L), 0));
                     updateBaseAttackSpeed(p, t1, 0);
 
                     heavyStacks.put(uuid, 0); heavyHitCount.put(uuid, 0);
@@ -453,35 +744,32 @@ public class CombatListener implements Listener {
                     if (isVanillaCrit) mult /= 1.5;
                     event.setDamage(event.getDamage() * mult);
 
-                    p.getWorld().spawnParticle(Particle.SONIC_BOOM, targetLoc, 1);
-                    p.getWorld().spawnParticle(Particle.SCULK_SOUL, targetLoc, 30, 0.5, 0.5, 0.5, 0.1);
+                    playBlackFlashVFX(targetLoc);
                     if (alertsEnabled) {
-                        p.playSound(p.getLocation(), Sound.ENTITY_WARDEN_SONIC_BOOM, 0.8f, 0.8f);
-                        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(ChatColor.DARK_GRAY + "" + ChatColor.BOLD + "☠ BLACK CRIT - THE ZONE ☠"));
+                        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(ChatColor.DARK_GRAY + "" + ChatColor.BOLD + "☠ BLACK CRIT - THE ZONE (" + (durationMs / 1000) + "s) ☠"));
                     }
                 }
                 else if (isRed) {
                     redStacks.put(uuid, r + 1);
                     double mult = 3.0; if (isVanillaCrit) mult /= 1.5; event.setDamage(event.getDamage() * mult);
-                    p.getWorld().spawnParticle(Particle.DUST, targetLoc, 40, 0.5, 0.5, 0.5, new Particle.DustOptions(org.bukkit.Color.RED, 2.5f));
-                    p.getWorld().spawnParticle(Particle.EXPLOSION, targetLoc, 1);
+                    p.getWorld().spawnParticle(Particle.DUST, critLoc, 12, 0.3, 0.3, 0.3, 0.0, new Particle.DustOptions(org.bukkit.Color.RED, 1.4f));
                     if (alertsEnabled) p.playSound(p.getLocation(), Sound.ENTITY_LIGHTNING_BOLT_IMPACT, 0.4f, 2f);
                 }
                 else if (isOrange) {
                     orangeStacks.put(uuid, o + 1);
                     double mult = 2.0; if (isVanillaCrit) mult /= 1.5; event.setDamage(event.getDamage() * mult);
-                    p.getWorld().spawnParticle(Particle.DUST, targetLoc, 25, 0.5, 0.5, 0.5, new Particle.DustOptions(org.bukkit.Color.ORANGE, 2.0f));
+                    p.getWorld().spawnParticle(Particle.DUST, critLoc, 8, 0.25, 0.25, 0.25, 0.0, new Particle.DustOptions(org.bukkit.Color.ORANGE, 1.2f));
                     if (alertsEnabled) p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.6f, 0.8f);
                 }
                 else if (isYellow) {
                     yellowStacks.put(uuid, y + 1);
                     double mult = 1.5; if (isVanillaCrit) mult /= 1.5; event.setDamage(event.getDamage() * mult);
-                    p.getWorld().spawnParticle(Particle.DUST, targetLoc, 15, 0.5, 0.5, 0.5, new Particle.DustOptions(org.bukkit.Color.YELLOW, 1.5f));
+                    p.getWorld().spawnParticle(Particle.DUST, critLoc, 5, 0.2, 0.2, 0.2, 0.0, new Particle.DustOptions(org.bukkit.Color.YELLOW, 1.0f));
                     if (alertsEnabled) p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.5f, 1.2f);
                 }
             } else {
                 double mult = 1.5; if (isVanillaCrit) mult /= 1.5; event.setDamage(event.getDamage() * mult);
-                p.getWorld().spawnParticle(Particle.DUST, targetLoc, 15, 0.5, 0.5, 0.5, new Particle.DustOptions(org.bukkit.Color.YELLOW, 1.5f));
+                p.getWorld().spawnParticle(Particle.DUST, critLoc, 5, 0.2, 0.2, 0.2, 0.0, new Particle.DustOptions(org.bukkit.Color.YELLOW, 1.0f));
                 if (alertsEnabled) p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.5f, 1.2f);
             }
         }
@@ -567,6 +855,7 @@ public class CombatListener implements Listener {
     @EventHandler
     public void onPlayerDeath(PlayerDeathEvent event) {
         Player victim = event.getEntity(); UUID vId = victim.getUniqueId();
+        revealPlayer(victim);
 
         yellowStacks.remove(vId); orangeStacks.remove(vId); redStacks.remove(vId);
         zoneEndTime.remove(vId); lastValidHitTime.remove(vId);
@@ -650,4 +939,87 @@ public class CombatListener implements Listener {
 
     @EventHandler public void onAdvancement(PlayerAdvancementDoneEvent event) { if (event.getAdvancement().getDisplay() != null && event.getAdvancement().getDisplay().shouldAnnounceChat()) { int p = switch (event.getAdvancement().getDisplay().getType().name()) { case "CHALLENGE" -> 3; case "GOAL" -> 2; default -> 1; }; plugin.giveRewardSmart(event.getPlayer(), "triumph", p); } }
     @EventHandler public void onResurrect(EntityResurrectEvent event) { if (event.getEntity() instanceof Player) event.setCancelled(true); }
+    @EventHandler public void onQuit(PlayerQuitEvent event) { revealPlayer(event.getPlayer()); }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPlayerMove(org.bukkit.event.player.PlayerMoveEvent event) {
+        Location from = event.getFrom();
+        Location to = event.getTo();
+        if (to == null) return;
+        if (from.getX() == to.getX() && from.getY() == to.getY() && from.getZ() == to.getZ()) return;
+
+        Player p = event.getPlayer();
+        long now = System.currentTimeMillis();
+
+        for (DomainData domain : activeDomains.values()) {
+            if (now > domain.endTime) continue;
+
+            // If the mover is the caster/owner of the domain
+            if (p.getUniqueId().equals(domain.owner)) {
+                if (to.getWorld().equals(domain.center.getWorld())) {
+                    double dist = to.distance(domain.center);
+                    // When reaching/hitting near the border (>= 7.0 blocks from center), shift center to player
+                    if (dist >= 7.0) {
+                        domain.center = to.clone();
+                    }
+                }
+                continue;
+            }
+
+            if (domain.isEscaping(from, to)) {
+                if (p.isInsideVehicle()) p.leaveVehicle();
+                event.setTo(from.clone());
+                Vector push = domain.center.toVector().subtract(to.toVector()).normalize().multiply(0.5).setY(0.1);
+                p.setVelocity(push);
+                p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_LAND, 0.3f, 1.8f);
+                p.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(ChatColor.RED + "§l⚠ SHOCKWAVE BARRIER PREVENTS ESCAPE! ⚠"));
+                break;
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPlayerTeleport(org.bukkit.event.player.PlayerTeleportEvent event) {
+        Location from = event.getFrom();
+        Location to = event.getTo();
+        if (to == null) return;
+
+        Player p = event.getPlayer();
+        long now = System.currentTimeMillis();
+
+        for (DomainData domain : activeDomains.values()) {
+            if (now > domain.endTime) continue;
+
+            if (p.getUniqueId().equals(domain.owner)) {
+                if (to.getWorld().equals(domain.center.getWorld())) {
+                    domain.center = to.clone();
+                }
+                continue;
+            }
+
+            if (domain.isInside(from) && !domain.isInside(to)) {
+                event.setCancelled(true);
+                p.playSound(p.getLocation(), Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE, 0.8f, 0.6f);
+                p.sendMessage(plugin.PREFIX + ChatColor.RED + "You cannot teleport out of the Shockwave Domain!");
+                break;
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onVehicleMove(org.bukkit.event.vehicle.VehicleMoveEvent event) {
+        Location from = event.getFrom();
+        Location to = event.getTo();
+        if (to == null) return;
+
+        long now = System.currentTimeMillis();
+        for (DomainData domain : activeDomains.values()) {
+            if (now > domain.endTime) continue;
+            if (domain.isEscaping(from, to)) {
+                event.getVehicle().eject();
+                event.getVehicle().setVelocity(domain.center.toVector().subtract(to.toVector()).normalize().multiply(0.5).setY(0.1));
+                break;
+            }
+        }
+    }
 }

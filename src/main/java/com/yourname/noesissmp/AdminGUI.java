@@ -35,11 +35,30 @@ public class AdminGUI implements Listener {
         gui.setItem(11, createItem(Material.GOLD_NUGGET, "&6&l[+] Triumph Star", "&7Spawn 1x Triumph Star", "", "&e▶ Click to receive"));
         gui.setItem(12, createItem(Material.REDSTONE, "&4&l[+] Soul Star", "&7Spawn 1x Soul Star", "", "&e▶ Click to receive"));
         gui.setItem(13, createItem(Material.ECHO_SHARD, "&5&l[+] Zacrozz's Fragment", "&7Spawn 1x Boss Drop", "&7(Used for Mace)", "", "&e▶ Click to receive"));
+        gui.setItem(14, createItem(Material.BLAZE_POWDER, "&6&l[✦] Max Crit Stack", "&7Sets your Kill Stack to &e100&7.", "&7- 50% Max Crit Chance", "&7- Unlocks &8&lVOID / Black Crit &7Tier", "", "&e▶ Click to Max Crit"));
 
         gui.setItem(15, createItem(Material.IRON_SWORD, "&c&lStart PVP Event", "&7Starts the 4-Mode Tactical PvP Event.", "", "&e▶ Click to start recruitment"));
         gui.setItem(16, createItem(Material.WITHER_SKELETON_SKULL, "&9&lStart PVE Raid", "&7Starts the Boss Raid Event.", "&7(Zacrozz Boss Fight)", "", "&e▶ Click to start recruitment"));
 
+        boolean treeEnabled = plugin.getConfig().getBoolean("settings.zonetree_enabled", true);
+        gui.setItem(19, createItem(
+                treeEnabled ? Material.OAK_SAPLING : Material.DEAD_BUSH,
+                treeEnabled ? "&a&l[✦] Zone Tree: &2ENABLED" : "&c&l[✦] Zone Tree: &4DISABLED",
+                "&7Status: " + (treeEnabled ? "&aActive" : "&cDisabled"),
+                "",
+                "&7When disabled, all player upgrades",
+                "&7are reset and refunded into",
+                "&7their Cloud Storage.",
+                "",
+                "&e▶ Click to Toggle"
+        ));
+
+        gui.setItem(20, createItem(Material.DRAGON_BREATH, "&d&l[✦] Enter The Zone", "&7Instantly trigger &d&lTHE ZONE&7 mode.", "", "&e▶ Click to activate"));
+        gui.setItem(21, createItem(Material.GLASS_BOTTLE, "&7&l[✦] End The Zone", "&7Instantly end &d&lTHE ZONE&7 mode.", "", "&e▶ Click to deactivate"));
         gui.setItem(22, createItem(Material.COMMAND_BLOCK, "&d&lReload Config", "&7Reloads the config.yml file.", "", "&e▶ Click to reload"));
+        gui.setItem(23, createItem(Material.HONEYCOMB, "&e&l[✦] Skip: Yellow Stacks", "&7Sets Yellow Stacks to &e7&7.", "", "&e▶ Click to set"));
+        gui.setItem(24, createItem(Material.GLOWSTONE_DUST, "&6&l[✦] Skip: Orange Stacks", "&7Sets Orange Stacks to &67&7.", "", "&e▶ Click to set"));
+        gui.setItem(25, createItem(Material.REDSTONE_BLOCK, "&c&l[✦] Skip: Red Stacks", "&7Sets Red Stacks to &c6&7.", "&7(Next hit triggers &8&lBlack Flash&7!)", "", "&e▶ Click to set"));
         gui.setItem(31, createItem(Material.TNT, "&c&l☠ EMERGENCY WIPE ☠", "&4&lWARNING:", "&cResets ALL player stats & hearts!", "", "&4▶ Click to WIPE SERVER"));
 
         player.openInventory(gui);
@@ -81,6 +100,12 @@ public class AdminGUI implements Listener {
                 for (ItemStack i : left3.values()) player.getWorld().dropItemNaturally(player.getLocation(), i);
                 player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Spawned 1 Zacrozz's Fragment.");
                 player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 1f); break;
+            case 14:
+                plugin.getConfig().set("players." + player.getUniqueId() + ".kills", 100);
+                plugin.saveConfig();
+                player.sendMessage(plugin.PREFIX + ChatColor.GOLD + "✨ Your Kill Stack is now MAXED to 100! (60% Crit Chance & VOID Tier Unlocked)");
+                player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
+                break;
             case 15:
                 player.closeInventory();
                 if (plugin.eventManager != null) {
@@ -93,7 +118,48 @@ public class AdminGUI implements Listener {
                     if (plugin.eventManager.isEventActive()) player.sendMessage(plugin.PREFIX + ChatColor.RED + "An event is already active!");
                     else { plugin.eventManager.startRecruiting(EventManager.EventCategory.PVE); player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Started PvE Boss Raid Recruitment!"); }
                 } break;
+            case 19:
+                boolean currentTree = plugin.getConfig().getBoolean("settings.zonetree_enabled", true);
+                if (currentTree) {
+                    if (plugin.zoneGUI != null) plugin.zoneGUI.disableZoneTree();
+                    player.sendMessage(plugin.PREFIX + ChatColor.RED + "Zone Skill Tree is now DISABLED and all spent stars refunded to Cloud Storage!");
+                    player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 1f, 1f);
+                } else {
+                    if (plugin.zoneGUI != null) plugin.zoneGUI.enableZoneTree();
+                    player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Zone Skill Tree is now ENABLED!");
+                    player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.2f);
+                }
+                openGUI(player);
+                break;
+            case 20:
+                player.closeInventory();
+                if (plugin.combatListener != null) {
+                    plugin.combatListener.enterTheZone(player);
+                } break;
+            case 21:
+                player.closeInventory();
+                if (plugin.combatListener != null) {
+                    plugin.combatListener.endTheZone(player);
+                } break;
             case 22: plugin.reloadConfig(); player.sendMessage(plugin.PREFIX + ChatColor.LIGHT_PURPLE + "Config reloaded!"); player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f); break;
+            case 23:
+                if (plugin.combatListener != null) {
+                    plugin.combatListener.skipToTier(player, "yellow");
+                    player.sendMessage(plugin.PREFIX + ChatColor.YELLOW + "⚡ Yellow Stacks set to 7!");
+                    player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1.2f);
+                } break;
+            case 24:
+                if (plugin.combatListener != null) {
+                    plugin.combatListener.skipToTier(player, "orange");
+                    player.sendMessage(plugin.PREFIX + ChatColor.GOLD + "⚡ Orange Stacks set to 7!");
+                    player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1.2f);
+                } break;
+            case 25:
+                if (plugin.combatListener != null) {
+                    plugin.combatListener.skipToTier(player, "red");
+                    player.sendMessage(plugin.PREFIX + ChatColor.RED + "⚡ Red Stacks set to 6! Next crit will trigger BLACK FLASH!");
+                    player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1.5f);
+                } break;
             case 31:
                 player.closeInventory(); plugin.getConfig().set("players", null); plugin.saveConfig();
                 for (Player p : Bukkit.getOnlinePlayers()) {

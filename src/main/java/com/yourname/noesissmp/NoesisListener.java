@@ -99,6 +99,18 @@ public class NoesisListener implements Listener {
             }
         } catch (Exception ignored) {}
 
+        int pendingRefund = plugin.getConfig().getInt("players." + uuid + ".pending_zone_refund", 0);
+        if (pendingRefund > 0) {
+            plugin.getConfig().set("players." + uuid + ".pending_zone_refund", 0);
+            plugin.saveConfig();
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (player.isOnline()) {
+                    player.sendMessage(plugin.PREFIX + ChatColor.GOLD + "The Zone Skill Tree was disabled while you were offline. Refunded " + ChatColor.YELLOW + pendingRefund + " Triumph Stars" + ChatColor.GOLD + " to your Cloud Storage!");
+                    player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+                }
+            }, 30L);
+        }
+
         if (!plugin.getConfig().getBoolean("players." + uuid + ".seen_noesis_reboot_v2", false)) {
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (player.isOnline()) {
@@ -211,13 +223,17 @@ public class NoesisListener implements Listener {
         if (starType.equals("triumph")) {
             gui = Bukkit.createInventory(null, 27, "Consume Triumph Star");
             int overflow = plugin.getConfig().getInt("players." + player.getUniqueId() + ".overflow", 0);
-            gui.setItem(11, createIcon(Material.RED_DYE, "&c&l+1 Max Heart", "&7Current Hearts: " + hearts + "/20"));
-            gui.setItem(15, createIcon(Material.GOLD_NUGGET, "&e&l+1 Overflow (+0.8% Crit)", "&7Current Overflow: " + overflow));
+            gui.setItem(11, createIcon(Material.RED_DYE, "&c&l+1 Max Heart", "&7Current Hearts: " + hearts + "/20", "", "&e▶ Click to consume 1"));
+            gui.setItem(15, createIcon(Material.GOLD_NUGGET, "&e&l+1 Overflow (+0.8% Crit)", "&7Current Overflow: " + overflow, "", "&e▶ Click to consume 1"));
+            gui.setItem(20, createIcon(Material.HEART_OF_THE_SEA, "&c&l[✦] Claim ALL for Hearts", "&7Consumes Triumph Stars", "&7until &c20 Hearts&7 max.", "", "&e▶ Click to consume all"));
+            gui.setItem(24, createIcon(Material.HOPPER, "&e&l[✦] Claim ALL for Overflow", "&7Consumes ALL Triumph Stars", "&7in your inventory for Overflow.", "", "&e▶ Click to claim all"));
         } else {
             gui = Bukkit.createInventory(null, 27, "Consume Soul Star");
             int kills = plugin.getConfig().getInt("players." + player.getUniqueId() + ".kills", 0);
-            gui.setItem(11, createIcon(Material.RED_DYE, "&c&l+1 Max Heart", "&7Current Hearts: " + hearts + "/20"));
-            gui.setItem(15, createIcon(Material.IRON_SWORD, "&c&l+1 Kill Stack (+0.8% Crit)", "&7Current Kills: " + kills));
+            gui.setItem(11, createIcon(Material.RED_DYE, "&c&l+1 Max Heart", "&7Current Hearts: " + hearts + "/20", "", "&e▶ Click to consume 1"));
+            gui.setItem(15, createIcon(Material.IRON_SWORD, "&c&l+1 Kill Stack (+0.8% Crit)", "&7Current Kills: " + kills, "", "&e▶ Click to consume 1"));
+            gui.setItem(20, createIcon(Material.HEART_OF_THE_SEA, "&c&l[✦] Claim ALL for Hearts", "&7Consumes Soul Stars", "&7until &c20 Hearts&7 max.", "", "&e▶ Click to consume all"));
+            gui.setItem(24, createIcon(Material.HOPPER, "&c&l[✦] Claim ALL for Kill Stacks", "&7Consumes ALL Soul Stars", "&7in your inventory for Kill Stacks.", "", "&e▶ Click to claim all"));
         }
         player.openInventory(gui);
     }
@@ -265,6 +281,49 @@ public class NoesisListener implements Listener {
 
             plugin.saveConfig();
             player.closeInventory();
+        } else if (slot == 20) {
+            // Claim ALL for Hearts
+            double currentHearts = player.getMaxHealth();
+            int heartsNeeded = (int) Math.max(0, (40.0 - currentHearts) / 2.0);
+            if (heartsNeeded <= 0) {
+                player.sendMessage(plugin.PREFIX + ChatColor.RED + "Your hearts are already maxed out (20)!");
+                player.closeInventory();
+                return;
+            }
+            int totalInInv = countStars(player, starType);
+            int toConsume = Math.min(totalInInv, heartsNeeded);
+            if (toConsume <= 0) {
+                player.sendMessage(plugin.PREFIX + ChatColor.RED + "No " + starType + " stars in your inventory!");
+                player.closeInventory();
+                return;
+            }
+            int consumed = consumeAllStars(player, starType, toConsume);
+            player.setMaxHealth(currentHearts + (consumed * 2.0));
+            player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Consumed " + consumed + " stars for " + ChatColor.RED + "+" + consumed + " Max Hearts" + ChatColor.GREEN + "!");
+            plugin.saveConfig();
+            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+            player.closeInventory();
+        } else if (slot == 24) {
+            // Claim ALL for Overflow / Kill Stacks
+            int totalInInv = countStars(player, starType);
+            if (totalInInv <= 0) {
+                player.sendMessage(plugin.PREFIX + ChatColor.RED + "No " + starType + " stars in your inventory!");
+                player.closeInventory();
+                return;
+            }
+            int consumed = consumeAllStars(player, starType, totalInInv);
+            if (starType.equals("triumph")) {
+                int over = plugin.getConfig().getInt("players." + player.getUniqueId() + ".overflow", 0) + consumed;
+                plugin.getConfig().set("players." + player.getUniqueId() + ".overflow", over);
+                player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Consumed " + consumed + " Triumph Stars for " + ChatColor.YELLOW + "+" + consumed + " Overflow" + ChatColor.GREEN + "!");
+            } else {
+                int kills = plugin.getConfig().getInt("players." + player.getUniqueId() + ".kills", 0) + consumed;
+                plugin.getConfig().set("players." + player.getUniqueId() + ".kills", kills);
+                player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Consumed " + consumed + " Soul Stars for " + ChatColor.DARK_RED + "+" + consumed + " Kill Stacks" + ChatColor.GREEN + "!");
+            }
+            plugin.saveConfig();
+            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.2f);
+            player.closeInventory();
         }
     }
 
@@ -272,6 +331,49 @@ public class NoesisListener implements Listener {
     public void onDrag(InventoryDragEvent event) {
         String title = ChatColor.stripColor(event.getView().getTitle());
         if (title != null && (title.equals("Consume Triumph Star") || title.equals("Consume Soul Star"))) event.setCancelled(true);
+    }
+
+    private int countStars(Player player, String type) {
+        int count = 0;
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (item != null && item.getType() == Material.NETHER_STAR && item.hasItemMeta()) {
+                String checkType = item.getItemMeta().getPersistentDataContainer().get(plugin.starTypeKey, PersistentDataType.STRING);
+                if (checkType == null) {
+                    String dName = ChatColor.stripColor(item.getItemMeta().getDisplayName());
+                    if (dName != null) checkType = dName.contains("Triumph Star") ? "triumph" : (dName.contains("Soul Star") ? "soul" : null);
+                }
+                if (type.equals(checkType)) {
+                    count += item.getAmount();
+                }
+            }
+        }
+        return count;
+    }
+
+    private int consumeAllStars(Player player, String type, int maxToConsume) {
+        int remaining = maxToConsume;
+        ItemStack[] contents = player.getInventory().getContents();
+        for (int i = 0; i < contents.length; i++) {
+            ItemStack item = contents[i];
+            if (item != null && item.getType() == Material.NETHER_STAR && item.hasItemMeta()) {
+                String checkType = item.getItemMeta().getPersistentDataContainer().get(plugin.starTypeKey, PersistentDataType.STRING);
+                if (checkType == null) {
+                    String dName = ChatColor.stripColor(item.getItemMeta().getDisplayName());
+                    if (dName != null) checkType = dName.contains("Triumph Star") ? "triumph" : (dName.contains("Soul Star") ? "soul" : null);
+                }
+                if (type.equals(checkType)) {
+                    if (item.getAmount() <= remaining) {
+                        remaining -= item.getAmount();
+                        player.getInventory().setItem(i, null);
+                    } else {
+                        item.setAmount(item.getAmount() - remaining);
+                        remaining = 0;
+                    }
+                    if (remaining <= 0) break;
+                }
+            }
+        }
+        return maxToConsume - remaining;
     }
 
     private boolean consumeStar(Player player, String type) {

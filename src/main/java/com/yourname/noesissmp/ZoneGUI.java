@@ -26,6 +26,12 @@ public class ZoneGUI implements Listener {
     }
 
     public void openGUI(Player p) {
+        if (!plugin.getConfig().getBoolean("settings.zonetree_enabled", true)) {
+            p.sendMessage(plugin.PREFIX + ChatColor.RED + "The Zone Skill Tree is currently disabled by an administrator.");
+            p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+            return;
+        }
+
         Inventory inv = Bukkit.createInventory(null, 45, TITLE);
 
         String t1 = plugin.getConfig().getString("players." + p.getUniqueId() + ".zone.tier1", "none");
@@ -39,21 +45,35 @@ public class ZoneGUI implements Listener {
 
         // 🔴 TIER 3 (Top Row)
         inv.setItem(11, createNode(Material.GHAST_TEAR, "&f&lLIGHT: Tier 3",
-                "&7Cost: &615 Triumph Stars", "", "&f▶ Combo Debuff:", "&7Hit an enemy 3 times to reduce", "&7their movement and attack speed.", "&7(Stacks up to 50%)", "", getStatusText("light", t3, !t2.equals("none"))));
+                "&7Cost: &615 Triumph Stars", "", "&f▶ Combo Debuff:", "&7Hit an enemy 3 times to reduce", "&7their movement and attack speed.", "&7(-3% per stack, Max 5 Stacks / 15%)", "", getStatusText("light", t3, !t2.equals("none"))));
         inv.setItem(15, createNode(Material.TNT, "&c&lHEAVY: Tier 3",
-                "&7Cost: &615 Triumph Stars", "", "&c▶ Shockwave Domain:", "&7Every 5 hits triggers an AoE shockwave", "&7that damages, slows, and traps enemies", "&7inside a 10-block domain.", "", getStatusText("heavy", t3, !t2.equals("none"))));
+                "&7Cost: &615 Triumph Stars", "", "&c▶ Shockwave Finisher:", "&7At 5 Combo Stacks, your next hit", "&7triggers an AoE shockwave and seals", "&7enemies inside a 10-block domain.", "", getStatusText("heavy", t3, !t2.equals("none"))));
 
         // 🔴 TIER 2 (Middle Row)
+        String handMode = plugin.getConfig().getString("players." + p.getUniqueId() + ".zone.hand_mode", "normal");
+        boolean isInverted = handMode.equals("invert");
+        inv.setItem(19, createNode(
+                isInverted ? Material.AMETHYST_SHARD : Material.PRISMARINE_SHARD,
+                isInverted ? "&e&lHand Mode: &bInvert Mode" : "&e&lHand Mode: &aNormal Mode",
+                "&7Current: " + (isInverted ? "&bInvert (Left-Handed)" : "&aNormal (Right-Handed)"),
+                "",
+                "&7In Invert Mode, the offhand and",
+                "&7mainhand on the afterimage clone",
+                "&7are swapped to match left-handed players.",
+                "",
+                "&e▶ Click to Toggle"
+        ));
+
         inv.setItem(20, createNode(Material.PHANTOM_MEMBRANE, "&f&lLIGHT: Tier 2",
-                "&7Cost: &610 Triumph Stars", "", "&f▶ Afterimage:", "&7Crits have 35% chance to create", "&7a clone and grant Speed 4 for 1s.", "", getStatusText("light", t2, !t1.equals("none"))));
+                "&7Cost: &610 Triumph Stars", "", "&f▶ Afterimage:", "&7Crits have 15% chance to create", "&7an afterimage clone (0.5s) & Speed 4.", "", getStatusText("light", t2, !t1.equals("none"))));
         inv.setItem(24, createNode(Material.IRON_AXE, "&c&lHEAVY: Tier 2",
-                "&7Cost: &610 Triumph Stars", "", "&c▶ Combo Stack:", "&7Successive hits grant +10% DMG", "&7and -5% ATK SPD (Max 3 Stacks).", "&7Missing a swing resets combo.", "", getStatusText("heavy", t2, !t1.equals("none"))));
+                "&7Cost: &610 Triumph Stars", "", "&c▶ Combo Stack:", "&7Successive charged hits (84.8%+) grant", "&7+10% DMG (Max 5 Stacks / +50%).", "&7Missing a swing removes 1 stack.", "", getStatusText("heavy", t2, !t1.equals("none"))));
 
         // 🔴 TIER 1 (Bottom Row - Core Passive)
         inv.setItem(29, createNode(Material.FEATHER, "&f&lLIGHT: Tier 1 (Core)",
-                "&7Cost: &65 Triumph Stars", "", "&f▶ Passive (Always Active):", "&7+15% ATK Speed. Crits grant", "&7Invisibility & Speed 2 (5s).", "", "&f▶ Perfect Dodge:", "&735% chance to teleport behind attacker", "&7and blind/slow them.", "", getStatusText("light", t1, true)));
+                "&7Cost: &65 Triumph Stars", "", "&f▶ Passive (Always Active):", "&7+15% ATK Speed. Crits grant", "&7Invisibility & Speed 2 (2s).", "", "&f▶ Perfect Dodge:", "&735% chance to teleport behind attacker", "&7and blind/slow them.", "", getStatusText("light", t1, true)));
         inv.setItem(33, createNode(Material.ANVIL, "&c&lHEAVY: Tier 1 (Core)",
-                "&7Cost: &65 Triumph Stars", "", "&c▶ Passive (Always Active):", "&7+50% DMG, -25% ATK Speed.", "&7Permanent Slowness 1.", "", "&c▶ Perfect Parry:", "&7Taking a hit within 0.25s of", "&7raising a shield stuns attacker.", "", getStatusText("heavy", t1, true)));
+                "&7Cost: &65 Triumph Stars", "", "&c▶ Passive (Always Active):", "&7+50% DMG, -10% ATK Speed.", "&7Permanent Slowness 1.", "", "&c▶ Shield Parry:", "&7Blocking any attack with a shield", "&7stuns and weakens the attacker.", "", getStatusText("heavy", t1, true)));
 
         // 🔴 ปุ่ม Reset
         inv.setItem(40, createNode(Material.BARRIER, "&4&lRESET SKILL TREE", "&7Reset all nodes and start over.", "&c(Triumph Stars will NOT be refunded!)", "", "&e▶ Click to Reset"));
@@ -89,6 +109,17 @@ public class ZoneGUI implements Listener {
             String t1 = plugin.getConfig().getString("players." + uuid + ".zone.tier1", "none");
             String t2 = plugin.getConfig().getString("players." + uuid + ".zone.tier2", "none");
             String t3 = plugin.getConfig().getString("players." + uuid + ".zone.tier3", "none");
+
+            // Hand Mode Toggle
+            if (slot == 19) {
+                String currentMode = plugin.getConfig().getString("players." + uuid + ".zone.hand_mode", "normal");
+                String nextMode = currentMode.equals("invert") ? "normal" : "invert";
+                plugin.getConfig().set("players." + uuid + ".zone.hand_mode", nextMode);
+                plugin.saveConfig();
+                p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+                openGUI(p);
+                return;
+            }
 
             // รีเซ็ตสกิล
             if (slot == 40) {
@@ -155,5 +186,56 @@ public class ZoneGUI implements Listener {
             }
         }
         return true;
+    }
+
+    public void disableZoneTree() {
+        plugin.getConfig().set("settings.zonetree_enabled", false);
+
+        if (plugin.getConfig().contains("players")) {
+            for (String uuidStr : plugin.getConfig().getConfigurationSection("players").getKeys(false)) {
+                String t1 = plugin.getConfig().getString("players." + uuidStr + ".zone.tier1", "none");
+                String t2 = plugin.getConfig().getString("players." + uuidStr + ".zone.tier2", "none");
+                String t3 = plugin.getConfig().getString("players." + uuidStr + ".zone.tier3", "none");
+
+                int refund = 0;
+                if (!t1.equals("none")) refund += 5;
+                if (!t2.equals("none")) refund += 10;
+                if (!t3.equals("none")) refund += 15;
+
+                if (refund > 0) {
+                    int stored = plugin.getConfig().getInt("players." + uuidStr + ".stored_triumph", 0);
+                    plugin.getConfig().set("players." + uuidStr + ".stored_triumph", stored + refund);
+                    plugin.getConfig().set("players." + uuidStr + ".zone.tier1", "none");
+                    plugin.getConfig().set("players." + uuidStr + ".zone.tier2", "none");
+                    plugin.getConfig().set("players." + uuidStr + ".zone.tier3", "none");
+
+                    boolean sentLive = false;
+                    try {
+                        java.util.UUID u = java.util.UUID.fromString(uuidStr);
+                        Player p = Bukkit.getPlayer(u);
+                        if (p != null && p.isOnline()) {
+                            if (ChatColor.stripColor(p.getOpenInventory().getTitle()).contains("THE ZONE SKILL TREE")) {
+                                p.closeInventory();
+                            }
+                            p.sendMessage(plugin.PREFIX + ChatColor.GOLD + "The Zone Skill Tree has been disabled. Refunded " + ChatColor.YELLOW + refund + " Triumph Stars" + ChatColor.GOLD + " to your Cloud Storage!");
+                            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+                            sentLive = true;
+                        }
+                    } catch (Exception ignored) {}
+
+                    if (!sentLive) {
+                        int prevPending = plugin.getConfig().getInt("players." + uuidStr + ".pending_zone_refund", 0);
+                        plugin.getConfig().set("players." + uuidStr + ".pending_zone_refund", prevPending + refund);
+                    }
+                }
+            }
+        }
+
+        plugin.saveConfig();
+    }
+
+    public void enableZoneTree() {
+        plugin.getConfig().set("settings.zonetree_enabled", true);
+        plugin.saveConfig();
     }
 }
