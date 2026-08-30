@@ -267,10 +267,14 @@ public class CombatListener implements Listener {
     }
 
     public void endTheZone(Player p) {
+        if (p == null) return;
         UUID uuid = p.getUniqueId();
         zoneEndTime.remove(uuid);
         if (p.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
             p.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
+        }
+        if (p.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
+            p.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
         }
         p.removePotionEffect(PotionEffectType.SLOWNESS);
         heavyStacks.remove(uuid);
@@ -862,6 +866,14 @@ public class CombatListener implements Listener {
         heavyStacks.remove(vId); heavyHitCount.remove(vId);
         lightDmgTaken.remove(vId); lightHits.remove(vId); clearLightDebuffs(vId);
 
+        victim.removePotionEffect(PotionEffectType.SLOWNESS);
+        if (victim.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
+            victim.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
+        }
+        if (victim.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
+            victim.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
+        }
+
         if (deathCooldowns.containsKey(vId) && System.currentTimeMillis() - deathCooldowns.get(vId) < 3000) return;
         deathCooldowns.put(vId, System.currentTimeMillis());
 
@@ -922,6 +934,14 @@ public class CombatListener implements Listener {
     @EventHandler
     public void onPlayerRespawn(PlayerRespawnEvent event) {
         Player player = event.getPlayer(); UUID uuid = player.getUniqueId();
+        if (player.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
+            player.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
+        }
+        if (player.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
+            player.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
+        }
+        player.removePotionEffect(PotionEffectType.SLOWNESS);
+
         if (plugin.getConfig().getBoolean("players." + uuid + ".pending_heart_loss", false)) {
             plugin.getConfig().set("players." + uuid + ".pending_heart_loss", false); plugin.saveConfig();
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
@@ -939,7 +959,23 @@ public class CombatListener implements Listener {
 
     @EventHandler public void onAdvancement(PlayerAdvancementDoneEvent event) { if (event.getAdvancement().getDisplay() != null && event.getAdvancement().getDisplay().shouldAnnounceChat()) { int p = switch (event.getAdvancement().getDisplay().getType().name()) { case "CHALLENGE" -> 3; case "GOAL" -> 2; default -> 1; }; plugin.giveRewardSmart(event.getPlayer(), "triumph", p); } }
     @EventHandler public void onResurrect(EntityResurrectEvent event) { if (event.getEntity() instanceof Player) event.setCancelled(true); }
-    @EventHandler public void onQuit(PlayerQuitEvent event) { revealPlayer(event.getPlayer()); }
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        Player p = event.getPlayer();
+        revealPlayer(p);
+        if (zoneEndTime.containsKey(p.getUniqueId())) {
+            endTheZone(p);
+        } else {
+            if (p.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
+                p.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
+            }
+            if (p.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
+                p.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
+            }
+            p.removePotionEffect(PotionEffectType.SLOWNESS);
+        }
+        clearLightDebuffs(p.getUniqueId());
+    }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerMove(org.bukkit.event.player.PlayerMoveEvent event) {

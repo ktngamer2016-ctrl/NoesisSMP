@@ -193,6 +193,16 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
                 Player p = Bukkit.getPlayer(id);
                 if (p != null) combatListener.revealPlayer(p);
             }
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                combatListener.endTheZone(p);
+                if (p.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
+                    p.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
+                }
+                if (p.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
+                    p.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
+                }
+                p.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
+            }
         }
     }
 

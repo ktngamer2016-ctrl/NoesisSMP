@@ -127,6 +127,16 @@ public class ZoneGUI implements Listener {
                 plugin.getConfig().set("players." + uuid + ".zone.tier2", "none");
                 plugin.getConfig().set("players." + uuid + ".zone.tier3", "none");
                 plugin.saveConfig();
+                if (plugin.combatListener != null) {
+                    plugin.combatListener.endTheZone(p);
+                }
+                if (p.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_SPEED) != null) {
+                    p.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
+                }
+                if (p.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MOVEMENT_SPEED) != null) {
+                    p.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
+                }
+                p.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
                 p.playSound(p.getLocation(), Sound.ENTITY_ITEM_BREAK, 1f, 1f);
                 openGUI(p);
                 return;
@@ -190,6 +200,19 @@ public class ZoneGUI implements Listener {
 
     public void disableZoneTree() {
         plugin.getConfig().set("settings.zonetree_enabled", false);
+
+        for (Player onlineP : Bukkit.getOnlinePlayers()) {
+            if (plugin.combatListener != null) {
+                plugin.combatListener.endTheZone(onlineP);
+            }
+            if (onlineP.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_SPEED) != null) {
+                onlineP.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
+            }
+            if (onlineP.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MOVEMENT_SPEED) != null) {
+                onlineP.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
+            }
+            onlineP.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
+        }
 
         if (plugin.getConfig().contains("players")) {
             for (String uuidStr : plugin.getConfig().getConfigurationSection("players").getKeys(false)) {

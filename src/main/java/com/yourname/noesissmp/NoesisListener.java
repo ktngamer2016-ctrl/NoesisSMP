@@ -111,6 +111,16 @@ public class NoesisListener implements Listener {
             }, 30L);
         }
 
+        // Sanitize attributes on join to prevent lingering Zone or debuff values
+        try {
+            if (player.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
+                player.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
+            }
+            if (player.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
+                player.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
+            }
+        } catch (Exception ignored) {}
+
         if (!plugin.getConfig().getBoolean("players." + uuid + ".seen_noesis_reboot_v2", false)) {
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (player.isOnline()) {
@@ -160,11 +170,6 @@ public class NoesisListener implements Listener {
                     event.getPlayer().playSound(loc, Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE, 1f, 1f);
                 }
                 return;
-            }
-
-            // 🔴 ตรวจจับคลิกขวาที่ Crafting Table ทั่วไป
-            if (event.getClickedBlock().getType() == Material.CRAFTING_TABLE) {
-                CraftingEffectManager.playInteractEffect(loc, event.getPlayer());
             }
         }
 
