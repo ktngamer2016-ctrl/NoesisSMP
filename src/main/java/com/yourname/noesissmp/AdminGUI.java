@@ -1,0 +1,113 @@
+package com.yourname.noesissmp;
+
+import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.Material;
+import org.bukkit.Sound;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+
+public class AdminGUI implements Listener {
+
+    private final NoesisSMP plugin;
+    public static final String GUI_NAME = ChatColor.DARK_GRAY + "⚙ " + ChatColor.DARK_AQUA + ChatColor.BOLD + "Noesis Admin Panel";
+
+    public AdminGUI(NoesisSMP plugin) {
+        this.plugin = plugin;
+    }
+
+    public void openGUI(Player player) {
+        Inventory gui = Bukkit.createInventory(null, 36, GUI_NAME);
+
+        ItemStack glass = createItem(Material.BLACK_STAINED_GLASS_PANE, " ");
+        for (int i = 0; i < 36; i++) gui.setItem(i, glass);
+
+        gui.setItem(11, createItem(Material.GOLD_NUGGET, "&6&l[+] Triumph Star", "&7Spawn 1x Triumph Star", "", "&e▶ Click to receive"));
+        gui.setItem(12, createItem(Material.REDSTONE, "&4&l[+] Soul Star", "&7Spawn 1x Soul Star", "", "&e▶ Click to receive"));
+        gui.setItem(13, createItem(Material.ECHO_SHARD, "&5&l[+] Zacrozz's Fragment", "&7Spawn 1x Boss Drop", "&7(Used for Mace)", "", "&e▶ Click to receive"));
+
+        gui.setItem(15, createItem(Material.IRON_SWORD, "&c&lStart PVP Event", "&7Starts the 4-Mode Tactical PvP Event.", "", "&e▶ Click to start recruitment"));
+        gui.setItem(16, createItem(Material.WITHER_SKELETON_SKULL, "&9&lStart PVE Raid", "&7Starts the Boss Raid Event.", "&7(Zacrozz Boss Fight)", "", "&e▶ Click to start recruitment"));
+
+        gui.setItem(22, createItem(Material.COMMAND_BLOCK, "&d&lReload Config", "&7Reloads the config.yml file.", "", "&e▶ Click to reload"));
+        gui.setItem(31, createItem(Material.TNT, "&c&l☠ EMERGENCY WIPE ☠", "&4&lWARNING:", "&cResets ALL player stats & hearts!", "", "&4▶ Click to WIPE SERVER"));
+
+        player.openInventory(gui);
+        player.playSound(player.getLocation(), Sound.BLOCK_IRON_DOOR_OPEN, 1f, 1.5f);
+    }
+
+    private ItemStack createItem(Material mat, String name, String... lore) {
+        ItemStack item = new ItemStack(mat); ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
+        List<String> loreList = Arrays.asList(lore).stream().map(l -> ChatColor.translateAlternateColorCodes('&', l)).toList();
+        meta.setLore(loreList); item.setItemMeta(meta); return item;
+    }
+
+    @EventHandler
+    public void onInventoryClick(InventoryClickEvent event) {
+        String title = ChatColor.stripColor(event.getView().getTitle());
+        if (title == null || !title.contains("Noesis Admin Panel")) return;
+
+        event.setCancelled(true);
+        if (event.getClickedInventory() == null || event.getClickedInventory() != event.getView().getTopInventory()) return;
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.BLACK_STAINED_GLASS_PANE) return;
+
+        int slot = event.getSlot();
+
+        switch (slot) {
+            case 11:
+                HashMap<Integer, ItemStack> left1 = player.getInventory().addItem(plugin.createStar("triumph"));
+                for (ItemStack i : left1.values()) player.getWorld().dropItemNaturally(player.getLocation(), i);
+                player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Spawned 1 Triumph Star.");
+                player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 1f); break;
+            case 12:
+                HashMap<Integer, ItemStack> left2 = player.getInventory().addItem(plugin.createStar("soul"));
+                for (ItemStack i : left2.values()) player.getWorld().dropItemNaturally(player.getLocation(), i);
+                player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Spawned 1 Soul Star.");
+                player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 1f); break;
+            case 13:
+                HashMap<Integer, ItemStack> left3 = player.getInventory().addItem(plugin.createBossDrop());
+                for (ItemStack i : left3.values()) player.getWorld().dropItemNaturally(player.getLocation(), i);
+                player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Spawned 1 Zacrozz's Fragment.");
+                player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 1f); break;
+            case 15:
+                player.closeInventory();
+                if (plugin.eventManager != null) {
+                    if (plugin.eventManager.isEventActive()) player.sendMessage(plugin.PREFIX + ChatColor.RED + "An event is already active!");
+                    else { plugin.eventManager.startRecruiting(EventManager.EventCategory.PVP); player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Started PvP Event Recruitment!"); }
+                } break;
+            case 16:
+                player.closeInventory();
+                if (plugin.eventManager != null) {
+                    if (plugin.eventManager.isEventActive()) player.sendMessage(plugin.PREFIX + ChatColor.RED + "An event is already active!");
+                    else { plugin.eventManager.startRecruiting(EventManager.EventCategory.PVE); player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Started PvE Boss Raid Recruitment!"); }
+                } break;
+            case 22: plugin.reloadConfig(); player.sendMessage(plugin.PREFIX + ChatColor.LIGHT_PURPLE + "Config reloaded!"); player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f); break;
+            case 31:
+                player.closeInventory(); plugin.getConfig().set("players", null); plugin.saveConfig();
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    p.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).setBaseValue(20.0); p.setHealth(20.0);
+                    p.playSound(p.getLocation(), Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 1f, 0.5f); p.sendTitle(ChatColor.DARK_RED + "☠ SERVER WIPE ☠", ChatColor.RED + "All stats have been reset.", 10, 70, 20);
+                } Bukkit.broadcastMessage(plugin.PREFIX + ChatColor.DARK_RED + ChatColor.BOLD + "EMERGENCY SERVER WIPE COMPLETED BY ADMIN!"); break;
+        }
+    }
+
+    @EventHandler
+    public void onInventoryDrag(InventoryDragEvent event) {
+        String title = ChatColor.stripColor(event.getView().getTitle());
+        if (title != null && title.contains("Noesis Admin Panel")) {
+            event.setCancelled(true);
+        }
+    }
+}

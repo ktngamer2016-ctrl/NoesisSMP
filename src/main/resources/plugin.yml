@@ -1,0 +1,27 @@
+name: NoesisSMP
+version: 1.0.1
+main: com.yourname.noesissmp.NoesisSMP
+api-version: 1.20
+
+commands:
+  noesis:
+    description: Core command for Noesis SMP (Claim rewards or Admin commands).
+    usage: "§cUsage: /noesis <gui|claim|deposit|mode>"
+  event:
+    description: Join or manage events.
+    aliases: [e]
+    usage: "§cUsage: /event <join|ready|leave|tab|team>"
+  ui:
+    description: Toggle the Noesis Scoreboard HUD.
+  alerts:
+    description: Toggle system alerts.
+  status:
+    description: Check your Max Hearts, Kill Stack, Overflow, and Crit Chance.
+  guide:
+    description: Open the Noesis SMP Guide Book.
+    aliases: [info, wiki]
+
+permissions:
+  noesis.admin:
+    description: Allows access to Noesis admin commands and admin GUI.
+    default: op
