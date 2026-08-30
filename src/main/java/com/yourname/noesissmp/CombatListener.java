@@ -65,6 +65,7 @@ public class CombatListener implements Listener {
     private final Map<UUID, Integer> heavyHitCount = new HashMap<>();
     private final Map<UUID, DomainData> activeDomains = new HashMap<>();
     private final Set<UUID> shockwaveDamageLock = new HashSet<>();
+    private final Map<UUID, Long> shockwaveCooldown = new HashMap<>();
 
     private final Map<UUID, Long> lightDodgeCD = new HashMap<>();
     private final Map<UUID, Double> lightDmgTaken = new HashMap<>();
@@ -116,12 +117,24 @@ public class CombatListener implements Listener {
         }
     }
 
-    private void updateBaseAttackSpeed(Player p, String t1, int stack) {
+    public void updateBaseAttackSpeed(Player p, String t1, int stack) {
+        if (p == null) return;
+        String t2 = plugin.getConfig().getString("players." + p.getUniqueId() + ".zone.tier2", "none");
         double base = 4.0;
-        if (t1.equals("heavy")) base *= 0.90; // -10% Attack speed
-        else if (t1.equals("light")) base *= 1.15;
+        if (t1.equals("heavy")) {
+            base *= 0.90; // -10% Attack speed (3.60)
+        } else if (t1.equals("light")) {
+            // Heavy Tier 2 completely removes any attack speed buff (e.g. from Light Tier 1)
+            if (!t2.equals("heavy")) {
+                base *= 1.15; // +15% Attack speed (4.60)
+            }
+        }
 
         base = base * (1.0 - (stack * 0.03));
+        if (t2.equals("heavy") && base > 4.0) {
+            base = 4.0;
+        }
+
         if (p.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
             p.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(base);
         }
@@ -270,9 +283,8 @@ public class CombatListener implements Listener {
         if (p == null) return;
         UUID uuid = p.getUniqueId();
         zoneEndTime.remove(uuid);
-        if (p.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
-            p.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
-        }
+        String t1 = plugin.getConfig().getString("players." + uuid + ".zone.tier1", "none");
+        updateBaseAttackSpeed(p, t1, 0);
         if (p.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
             p.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
         }
@@ -330,7 +342,8 @@ public class CombatListener implements Listener {
 
                     if (zoneEndTime.containsKey(uuid) && !inZone) {
                         zoneEndTime.remove(uuid);
-                        p.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
+                        String t1 = plugin.getConfig().getString("players." + uuid + ".zone.tier1", "none");
+                        updateBaseAttackSpeed(p, t1, 0);
                         p.removePotionEffect(PotionEffectType.SLOWNESS);
                         heavyStacks.remove(uuid); heavyHitCount.remove(uuid);
                         lightDmgTaken.remove(uuid); lightHits.remove(uuid);
@@ -553,20 +566,42 @@ public class CombatListener implements Listener {
             if (isValidTarget && isChargedHit) {
                 int stack = heavyStacks.getOrDefault(uuid, 0);
 
-                if (t3.equals("heavy") && stack >= 5) {
-                    // Shockwave Finisher! (Triggered on next hit when at 5 stacks)
+                long lastShockwave = shockwaveCooldown.getOrDefault(uuid, 0L);
+                if (t3.equals("heavy") && stack >= 5 && now >= lastShockwave + 30000L) {
+                    // Shockwave Finisher! (Triggered on next hit when at 5 stacks & not on 30s cooldown)
+                    shockwaveCooldown.put(uuid, now);
                     heavyStacks.put(uuid, 0);
                     updateBaseAttackSpeed(p, t1, 0);
 
                     Location loc = p.getLocation();
-                    p.getWorld().playSound(loc, Sound.ENTITY_WARDEN_SONIC_BOOM, 1f, 0.5f);
-                    p.getWorld().spawnParticle(Particle.EXPLOSION_EMITTER, loc, 2);
+                    p.getWorld().playSound(loc, Sound.BLOCK_ANVIL_LAND, 1.2f, 0.6f);
+                    p.getWorld().playSound(loc, Sound.ITEM_MACE_SMASH_GROUND, 1.2f, 0.8f);
+
+                    // Ground slam shockwave dust ring particles
+                    for (double r = 1.0; r <= 6.0; r += 1.0) {
+                        for (double theta = 0; theta < 2 * Math.PI; theta += Math.PI / 8) {
+                            double x = Math.cos(theta) * r;
+                            double z = Math.sin(theta) * r;
+                            p.getWorld().spawnParticle(Particle.DUST, loc.clone().add(x, 0.1, z), 1, 0, 0, 0, 0, new Particle.DustOptions(org.bukkit.Color.GRAY, 1.2f));
+                        }
+                    }
 
                     shockwaveDamageLock.add(uuid);
                     for (org.bukkit.entity.Entity ent : p.getNearbyEntities(10, 10, 10)) {
-                        if (ent instanceof LivingEntity t && ent != p) {
-                            t.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 60, 1));
-                            t.setVelocity(new Vector(0, 0.8, 0));
+                        if (ent instanceof LivingEntity t && ent != p && !(ent instanceof ArmorStand)) {
+                            // Brings players down
+                            t.setVelocity(new Vector(0, -1.2, 0));
+                            // Apply Slowness 4 for 1 second, then Slowness 2 for 5 seconds
+                            t.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 20, 3, false, true, true));
+                            new BukkitRunnable() {
+                                @Override
+                                public void run() {
+                                    if (t.isValid() && !t.isDead()) {
+                                        t.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 100, 1, false, true, true));
+                                    }
+                                }
+                            }.runTaskLater(plugin, 20L);
+
                             t.damage(5.0, p);
                         }
                     }
@@ -584,7 +619,7 @@ public class CombatListener implements Listener {
                 }
             }
 
-            if (t2.equals("light") && Math.random() <= 0.15) {
+            if (t2.equals("light") && Math.random() <= 0.10) {
                 p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 20, 3));
                 final Player attacker = p;
                 final Location cloneLoc = attacker.getLocation();
@@ -597,6 +632,12 @@ public class CombatListener implements Listener {
                 clone.setInvulnerable(true);
                 clone.setCollidable(false);
                 clone.setCustomNameVisible(false);
+                clone.getPersistentDataContainer().set(new org.bukkit.NamespacedKey(plugin, "afterimage"), PersistentDataType.BYTE, (byte) 1);
+
+                for (org.bukkit.inventory.EquipmentSlot slot : org.bukkit.inventory.EquipmentSlot.values()) {
+                    clone.addEquipmentLock(slot, ArmorStand.LockType.ADDING_OR_CHANGING);
+                    clone.addEquipmentLock(slot, ArmorStand.LockType.REMOVING_OR_CHANGING);
+                }
 
                 ItemStack[] armor = attacker.getInventory().getArmorContents();
                 ItemStack helmet = armor[3];
@@ -636,9 +677,18 @@ public class CombatListener implements Listener {
                     if (other != attacker && other.isOnline()) other.hidePlayer(plugin, attacker);
                 }
 
-                clone.getWorld().spawnParticle(Particle.PORTAL, cloneLoc.clone().add(0, 1, 0), 20, 0.3, 0.5, 0.3, 0.05);
-                clone.getWorld().spawnParticle(Particle.SWEEP_ATTACK, cloneLoc.clone().add(0, 1, 0), 2);
-                attacker.playSound(cloneLoc, Sound.ENTITY_PLAYER_ATTACK_SWEEP, 1f, 1.8f);
+                // Directly multiply this critical hit's damage by 1.5x
+                mult *= 1.5;
+
+                // Circular 360° Sweep Attack particles & Sound around afterimage
+                for (double angle = 0; angle < 360; angle += 45) {
+                    double rad = Math.toRadians(angle);
+                    double sx = Math.cos(rad) * 1.3;
+                    double sz = Math.sin(rad) * 1.3;
+                    cloneLoc.getWorld().spawnParticle(Particle.SWEEP_ATTACK, cloneLoc.clone().add(sx, 1.0, sz), 1);
+                }
+                cloneLoc.getWorld().spawnParticle(Particle.PORTAL, cloneLoc.clone().add(0, 1, 0), 25, 0.4, 0.5, 0.4, 0.05);
+                attacker.playSound(cloneLoc, Sound.ENTITY_PLAYER_ATTACK_SWEEP, 1.2f, 1.2f);
 
                 new BukkitRunnable() {
                     int ticks = 0;
@@ -665,10 +715,11 @@ public class CombatListener implements Listener {
 
             if (t3.equals("light") && targetEnt != null) {
                 int hits = lightHits.getOrDefault(uuid, 0) + 1;
+                UUID tId = targetEnt.getUniqueId();
+                Map<UUID, Integer> dMap = lightDebuffs.computeIfAbsent(uuid, k -> new HashMap<>());
+
                 if (hits >= 3) {
                     hits = 0;
-                    UUID tId = targetEnt.getUniqueId();
-                    Map<UUID, Integer> dMap = lightDebuffs.computeIfAbsent(uuid, k -> new HashMap<>());
                     int stacks = dMap.getOrDefault(tId, 0) + 1;
                     if (stacks > 5) stacks = 5;
                     dMap.put(tId, stacks);
@@ -686,6 +737,12 @@ public class CombatListener implements Listener {
                     targetEnt.getWorld().spawnParticle(Particle.WITCH, targetEnt.getLocation().add(0,2,0), 15);
                 }
                 lightHits.put(uuid, hits);
+
+                // Tier 3 Light: Increase user damage by +3% per stack up to a maximum of 15%
+                int currentStacks = dMap.getOrDefault(tId, 0);
+                if (currentStacks > 0) {
+                    mult *= (1.0 + (currentStacks * 0.03));
+                }
             }
 
             if (isVanillaCrit) mult /= 1.5;
@@ -934,9 +991,8 @@ public class CombatListener implements Listener {
     @EventHandler
     public void onPlayerRespawn(PlayerRespawnEvent event) {
         Player player = event.getPlayer(); UUID uuid = player.getUniqueId();
-        if (player.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
-            player.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
-        }
+        String t1 = plugin.getConfig().getString("players." + uuid + ".zone.tier1", "none");
+        updateBaseAttackSpeed(player, t1, 0);
         if (player.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
             player.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
         }
@@ -966,9 +1022,8 @@ public class CombatListener implements Listener {
         if (zoneEndTime.containsKey(p.getUniqueId())) {
             endTheZone(p);
         } else {
-            if (p.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
-                p.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
-            }
+            String t1 = plugin.getConfig().getString("players." + p.getUniqueId() + ".zone.tier1", "none");
+            updateBaseAttackSpeed(p, t1, 0);
             if (p.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
                 p.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
             }
@@ -1056,6 +1111,14 @@ public class CombatListener implements Listener {
                 event.getVehicle().setVelocity(domain.center.toVector().subtract(to.toVector()).normalize().multiply(0.5).setY(0.1));
                 break;
             }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    public void onArmorStandManipulate(org.bukkit.event.player.PlayerArmorStandManipulateEvent event) {
+        ArmorStand stand = event.getRightClicked();
+        if (stand.isInvulnerable() || stand.getPersistentDataContainer().has(new org.bukkit.NamespacedKey(plugin, "afterimage"), PersistentDataType.BYTE)) {
+            event.setCancelled(true);
         }
     }
 }

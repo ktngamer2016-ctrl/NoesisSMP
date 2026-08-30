@@ -75,8 +75,9 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
 
         new HUDManager(this).runTaskTimer(this, 20L, 40L);
 
-        getCommand("noesis").setTabCompleter(this);
-        getCommand("event").setTabCompleter(this);
+        if (getCommand("noesis") != null) getCommand("noesis").setTabCompleter(this);
+        if (getCommand("event") != null) getCommand("event").setTabCompleter(this);
+        if (getCommand("zone") != null) getCommand("zone").setTabCompleter(this);
 
         try { Bukkit.removeRecipe(NamespacedKey.minecraft("mace")); } catch (Exception ignored) {}
 
@@ -408,6 +409,13 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
                 completions.addAll(Arrays.asList("1", "2", "3", "4"));
             }
         }
+        else if (command.getName().equalsIgnoreCase("zone")) {
+            if (args.length == 1 && sender.hasPermission("noesis.admin")) {
+                completions.addAll(Arrays.asList("heavy", "light"));
+            } else if (args.length == 2 && (args[0].equalsIgnoreCase("heavy") || args[0].equalsIgnoreCase("light")) && sender.hasPermission("noesis.admin")) {
+                completions.addAll(Arrays.asList("0", "1", "2", "3"));
+            }
+        }
 
         List<String> result = new ArrayList<>();
         for (String c : completions) if (c.toLowerCase().startsWith(args[args.length - 1].toLowerCase())) result.add(c);
@@ -418,6 +426,31 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) return false;
         String uuid = player.getUniqueId().toString();
+
+        if (command.getName().equalsIgnoreCase("zone")) {
+            if (args.length == 0) {
+                zoneGUI.openGUI(player);
+                return true;
+            }
+
+            if (player.hasPermission("noesis.admin") && args.length >= 2) {
+                String path = args[0].toLowerCase();
+                try {
+                    int lvl = Integer.parseInt(args[1]);
+                    getConfig().set("players." + uuid + ".zone_path", path);
+                    getConfig().set("players." + uuid + ".zone_level", lvl);
+                    saveConfig();
+                    player.sendMessage(PREFIX + ChatColor.GREEN + "Admin forced your path to " + path.toUpperCase() + " Level " + lvl);
+                    player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+                } catch (Exception e) {
+                    player.sendMessage(PREFIX + ChatColor.RED + "Invalid level.");
+                }
+                return true;
+            }
+
+            zoneGUI.openGUI(player);
+            return true;
+        }
 
         if (command.getName().equalsIgnoreCase("noesis")) {
             if (args.length == 0 || args[0].equalsIgnoreCase("gui")) {

@@ -69,7 +69,7 @@ public class CraftingEffectManager {
         }
 
         // 3. Subtle ambient portal dust
-        coreLoc.getWorld().spawnParticle(Particle.DRAGON_BREATH, coreLoc, 2, 0.2, 0.2, 0.2, 0.02);
+        coreLoc.getWorld().spawnParticle(Particle.PORTAL, coreLoc, 6, 0.2, 0.2, 0.2, 0.02);
     }
 
     /**
@@ -97,9 +97,9 @@ public class CraftingEffectManager {
             }
         }
 
-        // Add witch and dragon breath aura to the core
+        // Add witch and portal aura to the core
         coreLoc.getWorld().spawnParticle(Particle.WITCH, coreLoc, 40, 1.0, 1.0, 1.0, 0.1);
-        coreLoc.getWorld().spawnParticle(Particle.DRAGON_BREATH, coreLoc, 50, 0.8, 0.8, 0.8, 0.05);
+        coreLoc.getWorld().spawnParticle(Particle.PORTAL, coreLoc, 50, 0.8, 0.8, 0.8, 0.05);
 
         // 2. Animated Branching Tendrils (กิ่งก้านสายฟ้าพุ่งกระจายเต็มท้องฟ้าเหมือนในภาพ)
         new BukkitRunnable() {

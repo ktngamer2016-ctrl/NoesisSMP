@@ -20,6 +20,10 @@ commands:
   guide:
     description: Open the Noesis SMP Guide Book.
     aliases: [info, wiki]
+  zone:
+    description: Open The Zone Skill Tree GUI.
+    aliases: [thezone, z]
+    usage: "§cUsage: /zone"
 
 permissions:
   noesis.admin:

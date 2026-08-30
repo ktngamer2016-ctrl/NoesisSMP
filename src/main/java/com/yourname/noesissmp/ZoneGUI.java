@@ -45,9 +45,9 @@ public class ZoneGUI implements Listener {
 
         // 🔴 TIER 3 (Top Row)
         inv.setItem(11, createNode(Material.GHAST_TEAR, "&f&lLIGHT: Tier 3",
-                "&7Cost: &615 Triumph Stars", "", "&f▶ Combo Debuff:", "&7Hit an enemy 3 times to reduce", "&7their movement and attack speed.", "&7(-3% per stack, Max 5 Stacks / 15%)", "", getStatusText("light", t3, !t2.equals("none"))));
+                "&7Cost: &615 Triumph Stars", "", "&f▶ Combo Debuff & DMG Boost:", "&7Hit an enemy 3 times to reduce", "&7their SPD & increase your DMG by +3%", "&7(Max 5 Stacks / 15% Boost).", "", getStatusText("light", t3, !t2.equals("none"))));
         inv.setItem(15, createNode(Material.TNT, "&c&lHEAVY: Tier 3",
-                "&7Cost: &615 Triumph Stars", "", "&c▶ Shockwave Finisher:", "&7At 5 Combo Stacks, your next hit", "&7triggers an AoE shockwave and seals", "&7enemies inside a 10-block domain.", "", getStatusText("heavy", t3, !t2.equals("none"))));
+                "&7Cost: &615 Triumph Stars", "", "&c▶ Shockwave Finisher (30s CD):", "&7At 5 Combo Stacks, your next hit", "&7slams nearby enemies down, applying", "&7Slowness 4 (1s) & Slowness 2 (5s),", "&7and seals them in a 10-block domain.", "", getStatusText("heavy", t3, !t2.equals("none"))));
 
         // 🔴 TIER 2 (Middle Row)
         String handMode = plugin.getConfig().getString("players." + p.getUniqueId() + ".zone.hand_mode", "normal");
@@ -65,9 +65,9 @@ public class ZoneGUI implements Listener {
         ));
 
         inv.setItem(20, createNode(Material.PHANTOM_MEMBRANE, "&f&lLIGHT: Tier 2",
-                "&7Cost: &610 Triumph Stars", "", "&f▶ Afterimage:", "&7Crits have 15% chance to create", "&7an afterimage clone (0.5s) & Speed 4.", "", getStatusText("light", t2, !t1.equals("none"))));
+                "&7Cost: &610 Triumph Stars", "", "&f▶ Afterimage:", "&7Crits have 10% chance to create", "&7an afterimage with 360° sweep slash,", "&7dealing 1.5x DMG & Speed 4.", "", getStatusText("light", t2, !t1.equals("none"))));
         inv.setItem(24, createNode(Material.IRON_AXE, "&c&lHEAVY: Tier 2",
-                "&7Cost: &610 Triumph Stars", "", "&c▶ Combo Stack:", "&7Successive charged hits (84.8%+) grant", "&7+10% DMG (Max 5 Stacks / +50%).", "&7Missing a swing removes 1 stack.", "", getStatusText("heavy", t2, !t1.equals("none"))));
+                "&7Cost: &610 Triumph Stars", "", "&c▶ Combo Stack:", "&7Removes ANY attack speed buffs.", "&7Successive charged hits grant", "&7+10% DMG & -3% ATK Speed", "&7(Max 5 Stacks / +50% DMG, -15% SPD).", "&7Missing a swing removes 1 stack.", "", getStatusText("heavy", t2, !t1.equals("none"))));
 
         // 🔴 TIER 1 (Bottom Row - Core Passive)
         inv.setItem(29, createNode(Material.FEATHER, "&f&lLIGHT: Tier 1 (Core)",
@@ -147,7 +147,11 @@ public class ZoneGUI implements Listener {
                 if (!t1.equals("none")) { p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f); return; }
                 if (!consumeStars(p, 5)) { p.sendMessage(plugin.PREFIX + ChatColor.RED + "You need 5 Triumph Stars in your inventory!"); p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f); return; }
                 plugin.getConfig().set("players." + uuid + ".zone.tier1", slot == 29 ? "light" : "heavy");
-                plugin.saveConfig(); p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f); openGUI(p);
+                plugin.saveConfig();
+                if (plugin.combatListener != null) {
+                    plugin.combatListener.updateBaseAttackSpeed(p, slot == 29 ? "light" : "heavy", 0);
+                }
+                p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f); openGUI(p);
             }
             // TIER 2
             else if (slot == 20 || slot == 24) {
@@ -155,7 +159,11 @@ public class ZoneGUI implements Listener {
                 if (!t2.equals("none")) { p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f); return; }
                 if (!consumeStars(p, 10)) { p.sendMessage(plugin.PREFIX + ChatColor.RED + "You need 10 Triumph Stars in your inventory!"); p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f); return; }
                 plugin.getConfig().set("players." + uuid + ".zone.tier2", slot == 20 ? "light" : "heavy");
-                plugin.saveConfig(); p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f); openGUI(p);
+                plugin.saveConfig();
+                if (plugin.combatListener != null) {
+                    plugin.combatListener.updateBaseAttackSpeed(p, t1, 0);
+                }
+                p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f); openGUI(p);
             }
             // TIER 3
             else if (slot == 11 || slot == 15) {

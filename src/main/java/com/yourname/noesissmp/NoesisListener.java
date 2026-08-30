@@ -111,10 +111,11 @@ public class NoesisListener implements Listener {
             }, 30L);
         }
 
-        // Sanitize attributes on join to prevent lingering Zone or debuff values
+        // Refresh attributes on join according to player's unlocked skills
         try {
-            if (player.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
-                player.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
+            String t1 = plugin.getConfig().getString("players." + uuid + ".zone.tier1", "none");
+            if (plugin.combatListener != null) {
+                plugin.combatListener.updateBaseAttackSpeed(player, t1, 0);
             }
             if (player.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
                 player.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
