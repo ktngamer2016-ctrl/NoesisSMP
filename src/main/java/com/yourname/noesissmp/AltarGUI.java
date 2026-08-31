@@ -2,10 +2,8 @@ package com.yourname.noesissmp;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
-import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -15,8 +13,6 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -28,10 +24,9 @@ public class AltarGUI implements Listener {
     private final NoesisSMP plugin;
     public static final String TITLE = ChatColor.DARK_RED + "☠ " + ChatColor.GOLD + "Altar of Triumph" + ChatColor.DARK_RED + " ☠";
 
-    private final int[] glassSlots = {0, 2, 6, 7, 8, 9, 10, 11, 15, 17, 18, 20, 24, 25, 26};
+    private final int[] glassSlots = {0, 1, 2, 6, 7, 8, 9, 11, 15, 17, 18, 19, 20, 24, 25, 26};
     private final int[] gridSlots = {3, 4, 5, 12, 13, 14, 21, 22, 23};
-    private final int TOP_CATALYST = 1;
-    private final int BOT_CATALYST = 19;
+    private final int LEFT_CATALYST = 10;
     private final int RESULT_SLOT = 16;
 
     public AltarGUI(NoesisSMP plugin) {
@@ -53,19 +48,22 @@ public class AltarGUI implements Listener {
         ItemMeta bm = btn.getItemMeta();
         bm.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + "✦ FORGE TRIUMPH STAR ✦");
         bm.setLore(Arrays.asList(
-                ChatColor.GRAY + "Fill the 3x3 grid to accumulate points.",
+                ChatColor.GRAY + "Fill the 3x3 grid with resources to forge Stars.",
                 "",
-                ChatColor.RED + "【 Activation Cost 】",
-                ChatColor.GRAY + "- 1x Netherite Ingot (Top Slot)",
-                ChatColor.GRAY + "- 1x Netherite Ingot (Bottom Slot)",
+                ChatColor.RED + "【 Activation Requirement 】",
+                ChatColor.GRAY + "- 1x Netherite Block (Left Slot)",
                 "",
-                ChatColor.AQUA + "【 Exchange Rates 】",
+                ChatColor.YELLOW + "【 Usage Quota 】",
+                ChatColor.GRAY + "- 1 Craft per Player per Altar Cycle (1 Hour)",
+                "",
+                ChatColor.AQUA + "【 Exchange Rates (per Star) 】",
                 ChatColor.GOLD + "- 9x Copper Ingot " + ChatColor.WHITE + "➔ 1 Star",
                 ChatColor.YELLOW + "- 4x Gold Ingot " + ChatColor.WHITE + "➔ 1 Star",
                 ChatColor.WHITE + "- 2x Iron Ingot " + ChatColor.WHITE + "➔ 1 Star",
                 ChatColor.GREEN + "- 2x Emerald " + ChatColor.WHITE + "➔ 1 Star",
                 ChatColor.AQUA + "- 1x Diamond " + ChatColor.WHITE + "➔ 1 Star",
                 ChatColor.DARK_GRAY + "- 1x Netherite Ingot " + ChatColor.WHITE + "➔ 5 Stars",
+                ChatColor.DARK_PURPLE + "- 1x Netherite Block " + ChatColor.WHITE + "➔ 45 Stars",
                 "",
                 ChatColor.GREEN + "Click to forge all valid materials!"
         ));
@@ -103,28 +101,36 @@ public class AltarGUI implements Listener {
     }
 
     private void processCrafting(Player p, Inventory inv) {
-        ItemStack top = inv.getItem(TOP_CATALYST);
-        ItemStack bot = inv.getItem(BOT_CATALYST);
-
-        if (top == null || top.getType() != Material.NETHERITE_INGOT ||
-                bot == null || bot.getType() != Material.NETHERITE_INGOT) {
-            p.sendMessage(plugin.PREFIX + ChatColor.RED + "You must place Netherite Ingots in the top and bottom slots to activate the Altar!");
+        // 1. Quota check (Max 1 per person per active cycle)
+        if (plugin.hasUsedAltarQuota(p)) {
+            p.sendMessage(plugin.PREFIX + ChatColor.RED + "You have already used your 1-craft quota for this Altar alignment cycle!");
+            p.sendMessage(plugin.PREFIX + ChatColor.GRAY + "Each player can only craft 1 time per active Altar cycle (1 Hour).");
             p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
             return;
         }
 
-        int copper = 0, iron = 0, gold = 0, emerald = 0, diamond = 0, netheriteGrid = 0;
+        // 2. Catalyst check (Left Slot 10 must contain 1x Netherite Block)
+        ItemStack catalyst = inv.getItem(LEFT_CATALYST);
+        if (catalyst == null || catalyst.getType() != Material.NETHERITE_BLOCK || catalyst.getAmount() < 1) {
+            p.sendMessage(plugin.PREFIX + ChatColor.RED + "You must place 1x Netherite Block in the left slot to activate the Altar!");
+            p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+            return;
+        }
+
+        // 3. Exchange rates calculation for materials in the 3x3 middle grid
+        int copper = 0, iron = 0, gold = 0, emerald = 0, diamond = 0, netheriteIngot = 0, netheriteBlock = 0;
         List<ItemStack> invalidItems = new ArrayList<>();
 
         for (int slot : gridSlots) {
             ItemStack item = inv.getItem(slot);
-            if (item != null) {
+            if (item != null && item.getType() != Material.AIR) {
                 if (item.getType() == Material.COPPER_INGOT) copper += item.getAmount();
                 else if (item.getType() == Material.IRON_INGOT) iron += item.getAmount();
                 else if (item.getType() == Material.GOLD_INGOT) gold += item.getAmount();
                 else if (item.getType() == Material.EMERALD) emerald += item.getAmount();
                 else if (item.getType() == Material.DIAMOND) diamond += item.getAmount();
-                else if (item.getType() == Material.NETHERITE_INGOT) netheriteGrid += item.getAmount();
+                else if (item.getType() == Material.NETHERITE_INGOT) netheriteIngot += item.getAmount();
+                else if (item.getType() == Material.NETHERITE_BLOCK) netheriteBlock += item.getAmount();
                 else invalidItems.add(item.clone());
 
                 inv.setItem(slot, null);
@@ -136,9 +142,10 @@ public class AltarGUI implements Listener {
         int goldStars = gold / 4;
         int emeraldStars = emerald / 2;
         int diamondStars = diamond;
-        int netheriteStars = netheriteGrid * 5;
+        int netheriteIngotStars = netheriteIngot * 5;
+        int netheriteBlockStars = netheriteBlock * 45;
 
-        int totalStars = copperStars + ironStars + goldStars + emeraldStars + diamondStars + netheriteStars;
+        int totalStars = copperStars + ironStars + goldStars + emeraldStars + diamondStars + netheriteIngotStars + netheriteBlockStars;
 
         int copperRem = copper % 9;
         int ironRem = iron % 2;
@@ -146,27 +153,31 @@ public class AltarGUI implements Listener {
         int emeraldRem = emerald % 2;
 
         if (totalStars == 0) {
-            p.sendMessage(plugin.PREFIX + ChatColor.RED + "Not enough valid materials in the 3x3 grid!");
+            p.sendMessage(plugin.PREFIX + ChatColor.RED + "Not enough valid materials in the 3x3 grid to forge stars!");
             p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
 
+            // Restore items back to grid
             if (copper > 0) inv.addItem(new ItemStack(Material.COPPER_INGOT, copper));
             if (iron > 0) inv.addItem(new ItemStack(Material.IRON_INGOT, iron));
             if (gold > 0) inv.addItem(new ItemStack(Material.GOLD_INGOT, gold));
             if (emerald > 0) inv.addItem(new ItemStack(Material.EMERALD, emerald));
             if (diamond > 0) inv.addItem(new ItemStack(Material.DIAMOND, diamond));
-            if (netheriteGrid > 0) inv.addItem(new ItemStack(Material.NETHERITE_INGOT, netheriteGrid));
+            if (netheriteIngot > 0) inv.addItem(new ItemStack(Material.NETHERITE_INGOT, netheriteIngot));
+            if (netheriteBlock > 0) inv.addItem(new ItemStack(Material.NETHERITE_BLOCK, netheriteBlock));
             for (ItemStack invalid : invalidItems) inv.addItem(invalid);
             return;
         }
 
-        top.setAmount(top.getAmount() - 1);
-        bot.setAmount(bot.getAmount() - 1);
-
-        for (int i = 0; i < totalStars; i++) {
-            HashMap<Integer, ItemStack> left = p.getInventory().addItem(plugin.createStar("triumph"));
-            for (ItemStack l : left.values()) p.getWorld().dropItemNaturally(p.getLocation(), l);
+        // 4. Deduct 1x Netherite Block catalyst from Left Slot 10
+        catalyst.setAmount(catalyst.getAmount() - 1);
+        if (catalyst.getAmount() <= 0) {
+            inv.setItem(LEFT_CATALYST, null);
         }
 
+        // 5. Award Triumph Stars to player smart storage/inventory
+        plugin.giveRewardSmart(p, "triumph", totalStars);
+
+        // 6. Return excess materials & invalid items
         List<ItemStack> itemsToReturn = new ArrayList<>(invalidItems);
         if (copperRem > 0) itemsToReturn.add(new ItemStack(Material.COPPER_INGOT, copperRem));
         if (ironRem > 0) itemsToReturn.add(new ItemStack(Material.IRON_INGOT, ironRem));
@@ -182,13 +193,16 @@ public class AltarGUI implements Listener {
             p.sendMessage(plugin.PREFIX + ChatColor.YELLOW + "Excess materials were returned to your inventory.");
         }
 
-        p.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Altar activated! Forged " + ChatColor.GOLD + totalStars + "x Triumph Stars!");
+        // 7. Record Quota Usage (1 per cycle)
+        plugin.recordAltarUsage(p);
 
+        p.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Altar activated! Forged " + ChatColor.GOLD + totalStars + "x Triumph Stars! " + ChatColor.YELLOW + "(Quota: 1/1 used)");
+
+        // 8. Trigger epic cosmic explosion effect
         Location loc = new Location(Bukkit.getWorlds().get(0), 0, 80, 0);
         playEpicAltarEffect(loc);
     }
 
-    // 🔴 เมธอดสำหรับสร้าง Particle สุดอลังการแบบในภาพ
     private void playEpicAltarEffect(Location centerLoc) {
         CraftingEffectManager.playActivationEffect(plugin, centerLoc);
     }
@@ -198,7 +212,8 @@ public class AltarGUI implements Listener {
         if (!ChatColor.stripColor(e.getView().getTitle()).equals("☠ Altar of Triumph ☠")) return;
         Player p = (Player) e.getPlayer();
 
-        int[] returnSlots = {TOP_CATALYST, BOT_CATALYST, 3, 4, 5, 12, 13, 14, 21, 22, 23};
+        // Return catalyst left slot and 3x3 grid slots
+        int[] returnSlots = {LEFT_CATALYST, 3, 4, 5, 12, 13, 14, 21, 22, 23};
 
         for (int slot : returnSlots) {
             ItemStack item = e.getInventory().getItem(slot);

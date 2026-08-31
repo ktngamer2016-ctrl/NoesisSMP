@@ -93,16 +93,18 @@ public class NoesisInfoGUI implements Listener {
             gui.setItem(15, createItem(Material.CRAFTING_TABLE, "&d&l5. Altar of Triumph",
                     "&e▶ Location & Cycle:",
                     "&7- Fixed at &bX:0, Y:80, Z:0 &7(Unbreakable).",
-                    "&7- Opens 30 mins, Cooldown 3 hours.",
+                    "&7- Opens 1 Hour, Cooldown 48 Hours.",
                     "&7- Check status: &b/noesis altar status",
                     "",
                     "&c▶ How to Forge Stars:",
-                    "&7- Requires &82x Netherite Ingots&7 (Top & Bottom).",
-                    "&7- Put ores in 3x3 grid (Leftovers are returned).",
+                    "&7- Requires &81x Netherite Block&7 (Left Slot).",
+                    "&7- &eQuota:&7 1 Craft per Player per Cycle.",
+                    "&7- Put materials in 3x3 middle grid (Leftovers returned).",
                     "",
                     "&a▶ Exchange Rates (per 1 Star):",
                     "&7- &6Copper 9&7 | &eGold 4&7 | &fIron 2",
-                    "&7- &aEmerald 2&7 | &bDiamond 1&7 | &8Netherite 1 &a(Yields 5 Stars)"
+                    "&7- &aEmerald 2&7 | &bDiamond 1&7 | &8Netherite Ingot 1 &a(5 Stars)",
+                    "&7- &5Netherite Block 1 &a(Yields 45 Stars)"
             ));
 
             gui.setItem(16, createItem(Material.WITHER_SKELETON_SKULL, "&9&l6. Event System (/event)",
@@ -174,16 +176,18 @@ public class NoesisInfoGUI implements Listener {
             gui.setItem(15, createItem(Material.CRAFTING_TABLE, "&d&l5. แท่น Altar of Triumph",
                     "&e▶ พิกัดและเวลาทำงาน:",
                     "&7- ตั้งอยู่ที่ &bX:0, Y:80, Z:0 &7(พังไม่ได้)",
-                    "&7- เปิดรอบละ 30 นาที สลับคูลดาวน์ 3 ชั่วโมง",
+                    "&7- เปิดรอบละ 1 ชั่วโมง สลับคูลดาวน์ 48 ชั่วโมง",
                     "&7- เช็คเวลาเปิดได้ด้วย &b/noesis altar status",
                     "",
                     "&c▶ วิธีคราฟต์ดาว (Triumph Star):",
-                    "&7- บังคับใส่ &8Netherite Ingot 2 อัน&7 (บน-ล่าง) เพื่อเดินเครื่อง",
+                    "&7- ต้องใส่ &8Netherite Block 1 บล็อก&7 ในช่องทางซ้ายเพื่อเดินเครื่อง",
+                    "&7- &eโควต้า:&7 คราฟต์ได้สูงสุด 1 ครั้ง / คน / รอบที่เปิด",
                     "&7- โยนแร่ผสมกันใน 3x3 ตรงกลาง (แร่เศษๆจะเด้งคืนให้)",
                     "",
                     "&a▶ อัตราแลกเปลี่ยน (ต่อ 1 ดาว):",
                     "&7- &6ทองแดง 9&7 | &eทอง 4&7 | &fเหล็ก 2",
-                    "&7- &aมรกต 2&7 | &bเพชร 1&7 | &8เนเธอร์ไรต์ 1 &a(ได้ 5 ดาว)"
+                    "&7- &aมรกต 2&7 | &bเพชร 1&7 | &8Netherite Ingot 1 &a(5 ดาว)",
+                    "&7- &5Netherite Block 1 &a(ได้ 45 ดาว)"
             ));
 
             gui.setItem(16, createItem(Material.WITHER_SKELETON_SKULL, "&9&l6. ระบบกิจกรรม (/event)",

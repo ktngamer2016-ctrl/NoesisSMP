@@ -43,6 +43,7 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
     public boolean altarOpen = false;
     public long altarCloseTime = 0;
     public long altarCooldownTime = Long.MAX_VALUE;
+    public final java.util.Set<String> altarUsedPlayers = new java.util.HashSet<>();
 
     // 🔴 ตัวแปรบาร์บอสสำหรับ Altar
     public BossBar altarBossBar;
@@ -57,6 +58,11 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
         altarOpen = getConfig().getBoolean("altar.is_open", false);
         altarCloseTime = getConfig().getLong("altar.close_time", 0);
         altarCooldownTime = getConfig().getLong("altar.cooldown_time", Long.MAX_VALUE);
+
+        List<String> loadedUsed = getConfig().getStringList("altar.used_players");
+        if (loadedUsed != null) {
+            altarUsedPlayers.addAll(loadedUsed);
+        }
 
         adminGUI = new AdminGUI(this);
         this.eventManager = new EventManager(this);
@@ -101,15 +107,15 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
             public void run() {
                 long now = System.currentTimeMillis();
 
-                // 🔴 เช็คหมดเวลาเปิด (เริ่มติดคูลดาวน์ 3 ชม.)
+                // 🔴 เช็คหมดเวลาเปิด (เริ่มติดคูลดาวน์ 48 ชม.)
                 if (altarOpen && now >= altarCloseTime) {
                     altarOpen = false;
-                    altarCooldownTime = now + (3L * 60 * 60 * 1000);
+                    altarCooldownTime = now + (48L * 60 * 60 * 1000);
                     getConfig().set("altar.is_open", false);
                     getConfig().set("altar.cooldown_time", altarCooldownTime);
                     saveConfig();
 
-                    Bukkit.broadcastMessage(PREFIX + ChatColor.RED + "☠ The Altar of Triumph has closed and entered a 3-Hour cooldown! ☠");
+                    Bukkit.broadcastMessage(PREFIX + ChatColor.RED + "☠ The Altar of Triumph has closed and entered a 48-Hour cooldown! ☠");
                     for (Player p : Bukkit.getOnlinePlayers()) {
                         p.playSound(p.getLocation(), Sound.ENTITY_WITHER_DEATH, 0.5f, 0.5f);
                         if (ChatColor.stripColor(p.getOpenInventory().getTitle()).equals("☠ Altar of Triumph ☠")) {
@@ -118,15 +124,17 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
                         }
                     }
                 }
-                // 🔴 เช็คหมดคูลดาวน์ (เปิดอัตโนมัติ 30 นาที)
+                // 🔴 เช็คหมดคูลดาวน์ (เปิดอัตโนมัติ 1 ชั่วโมง & รีเซ็ตโควต้า)
                 else if (!altarOpen && now >= altarCooldownTime) {
                     altarOpen = true;
-                    altarCloseTime = now + (30L * 60 * 1000);
+                    altarCloseTime = now + (1L * 60 * 60 * 1000);
+                    altarUsedPlayers.clear();
                     getConfig().set("altar.is_open", true);
                     getConfig().set("altar.close_time", altarCloseTime);
+                    getConfig().set("altar.used_players", new ArrayList<>());
                     saveConfig();
 
-                    Bukkit.broadcastMessage(PREFIX + ChatColor.GREEN + "✨ The Altar of Triumph is now OPEN at 0, 80, 0 for 30 minutes! ✨");
+                    Bukkit.broadcastMessage(PREFIX + ChatColor.GREEN + "✨ The Altar of Triumph is now OPEN at 0, 80, 0 for 1 Hour! ✨");
                     for (Player p : Bukkit.getOnlinePlayers()) {
                         p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
                     }
@@ -139,7 +147,7 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
                     long s = (left % 60000) / 1000;
                     altarBossBar.setTitle(ChatColor.LIGHT_PURPLE + "✨ Altar of Triumph is OPEN ✨ " + ChatColor.WHITE + m + "m " + s + "s");
                     altarBossBar.setColor(BarColor.PURPLE);
-                    altarBossBar.setProgress(Math.max(0.0, Math.min(1.0, (double) left / (30L * 60 * 1000))));
+                    altarBossBar.setProgress(Math.max(0.0, Math.min(1.0, (double) left / (1L * 60 * 60 * 1000))));
                 } else {
                     if (altarCooldownTime == Long.MAX_VALUE) {
                         altarBossBar.setTitle(ChatColor.DARK_RED + "☠ Altar of Triumph is DISABLED ☠");
@@ -152,13 +160,13 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
                         long s = (left % 60000) / 1000;
                         altarBossBar.setTitle(ChatColor.RED + "☠ Altar of Triumph on Cooldown ☠ " + ChatColor.WHITE + h + "h " + m + "m " + s + "s");
                         altarBossBar.setColor(BarColor.RED);
-                        altarBossBar.setProgress(Math.max(0.0, Math.min(1.0, (double) left / (3L * 60 * 60 * 1000))));
+                        altarBossBar.setProgress(Math.max(0.0, Math.min(1.0, (double) left / (48L * 60 * 60 * 1000))));
                     }
                 }
 
-                // 🔴 เช็คระยะผู้เล่น (200 บล็อก) เพื่อแสดง/ซ่อน BossBar
+                // 🔴 เช็คระยะผู้เล่น (100 บล็อก) เพื่อแสดง/ซ่อน BossBar
                 for (Player p : Bukkit.getOnlinePlayers()) {
-                    if (p.getWorld().equals(altarLoc.getWorld()) && p.getLocation().distanceSquared(altarLoc) <= 40000) { // 200 * 200 = 40,000
+                    if (p.getWorld().getName().equals(altarLoc.getWorld().getName()) && p.getLocation().distanceSquared(altarLoc) <= 10000) { // 100 * 100 = 10,000
                         if (!altarBossBar.getPlayers().contains(p)) {
                             altarBossBar.addPlayer(p);
                         }
@@ -495,14 +503,16 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
 
                 if (sub.equals("start")) {
                     altarOpen = true;
-                    altarCloseTime = now + (30L * 60 * 1000);
-                    altarCooldownTime = altarCloseTime + (3L * 60 * 60 * 1000);
+                    altarCloseTime = now + (1L * 60 * 60 * 1000);
+                    altarCooldownTime = altarCloseTime + (48L * 60 * 60 * 1000);
+                    altarUsedPlayers.clear();
                     getConfig().set("altar.is_open", true);
                     getConfig().set("altar.close_time", altarCloseTime);
                     getConfig().set("altar.cooldown_time", altarCooldownTime);
+                    getConfig().set("altar.used_players", new ArrayList<>());
                     saveConfig();
 
-                    Bukkit.broadcastMessage(PREFIX + ChatColor.GREEN + "✨ An Admin has FORCE OPENED the Altar of Triumph for 30 minutes! ✨");
+                    Bukkit.broadcastMessage(PREFIX + ChatColor.GREEN + "✨ An Admin has FORCE OPENED the Altar of Triumph for 1 Hour! Quotas reset! ✨");
                     for (Player p : Bukkit.getOnlinePlayers()) p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
                 }
                 else if (sub.equals("stop")) {
@@ -822,5 +832,17 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
         }
 
         return true;
+    }
+
+    public boolean hasUsedAltarQuota(Player p) {
+        if (p == null) return false;
+        return altarUsedPlayers.contains(p.getUniqueId().toString());
+    }
+
+    public void recordAltarUsage(Player p) {
+        if (p == null) return;
+        altarUsedPlayers.add(p.getUniqueId().toString());
+        getConfig().set("altar.used_players", new ArrayList<>(altarUsedPlayers));
+        saveConfig();
     }
 }
