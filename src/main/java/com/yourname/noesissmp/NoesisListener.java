@@ -224,7 +224,8 @@ public class NoesisListener implements Listener {
         if (starType == null) return;
         event.setCancelled(true);
 
-        int hearts = (int) (player.getMaxHealth() / 2.0);
+        org.bukkit.attribute.AttributeInstance maxHealthAttr = player.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        int hearts = (int) ((maxHealthAttr != null ? maxHealthAttr.getValue() : 20.0) / 2.0);
         Inventory gui;
 
         if (starType.equals("triumph")) {

@@ -22,34 +22,37 @@ import java.util.List;
 public class AltarGUI implements Listener {
 
     private final NoesisSMP plugin;
-    public static final String TITLE = ChatColor.DARK_RED + "☠ " + ChatColor.GOLD + "Altar of Triumph"
-            + ChatColor.DARK_RED + " ☠";
+    public static final String TITLE = ChatColor.DARK_RED + "☠ " + ChatColor.GOLD + "Altar of Triumph" + ChatColor.DARK_RED + " ☠";
     public static final int MAX_STARS_PER_SESSION = 10;
     private final java.util.Map<java.util.UUID, Integer> sessionCrafted = new HashMap<>();
 
-    private final int[] glassSlots = { 0, 1, 2, 6, 7, 8, 9, 11, 15, 17, 18, 19, 20, 24, 25, 26 };
-    private final int[] gridSlots = { 3, 4, 5, 12, 13, 14, 21, 22, 23 };
-    private final int LEFT_CATALYST = 10;
+    private final int[] glassSlots = {0, 2, 6, 7, 8, 9, 10, 11, 15, 17, 18, 20, 24, 25, 26};
+    private final int[] gridSlots = {3, 4, 5, 12, 13, 14, 21, 22, 23};
+    private final int TOP_CATALYST = 1;
+    private final int BOT_CATALYST = 19;
     private final int RESULT_SLOT = 16;
 
     public AltarGUI(NoesisSMP plugin) {
         this.plugin = plugin;
     }
 
-    public void resetSession() {
+    public void resetSessionLimits() {
         sessionCrafted.clear();
+    }
+
+    public void resetSession() {
+        resetSessionLimits();
     }
 
     public void openGUI(Player p) {
         Inventory inv = Bukkit.createInventory(null, 27, TITLE);
 
-        ItemStack glass = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
-        ItemMeta gm = glass.getItemMeta();
-        gm.setDisplayName(" ");
-        glass.setItemMeta(gm);
-        for (int slot : glassSlots) {
-            inv.setItem(slot, glass);
-        }
+        ItemStack border = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
+        ItemMeta meta = border.getItemMeta();
+        meta.setDisplayName(" ");
+        border.setItemMeta(meta);
+
+        for (int slot : glassSlots) inv.setItem(slot, border);
 
         int crafted = sessionCrafted.getOrDefault(p.getUniqueId(), 0);
         int remainingLimit = Math.max(0, MAX_STARS_PER_SESSION - crafted);
@@ -58,27 +61,22 @@ public class AltarGUI implements Listener {
         ItemMeta bm = btn.getItemMeta();
         bm.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + "✦ FORGE TRIUMPH STAR ✦");
         bm.setLore(Arrays.asList(
-                ChatColor.GRAY + "Fill the 3x3 grid with resources to forge Stars.",
+                ChatColor.GRAY + "Fill the 3x3 grid to accumulate points.",
                 "",
-                ChatColor.RED + "【 Activation Requirement 】",
-                ChatColor.GRAY + "- 1x Netherite Block (Left Slot)",
-                "",
-                ChatColor.YELLOW + "【 Usage Quota 】",
-                ChatColor.GRAY + "- 1 Craft per Player per Altar Cycle (1 Hour)",
+                ChatColor.RED + "【 Activation Cost 】",
+                ChatColor.GRAY + "- 1x Netherite Ingot (Top Slot)",
+                ChatColor.GRAY + "- 1x Netherite Ingot (Bottom Slot)",
                 "",
                 ChatColor.AQUA + "【 Exchange Rates 】",
                 ChatColor.AQUA + "- 7x Diamond Block " + ChatColor.WHITE + "➔ 1 Star",
                 ChatColor.DARK_GRAY + "- 2x Netherite Ingot " + ChatColor.WHITE + "➔ 1 Star",
                 "",
                 ChatColor.LIGHT_PURPLE + "【 Session Limit 】",
-                ChatColor.GRAY + "- Traded This Open: "
-                        + (crafted >= MAX_STARS_PER_SESSION ? ChatColor.RED : ChatColor.YELLOW) + crafted + "/"
-                        + MAX_STARS_PER_SESSION + " Stars",
-                ChatColor.GRAY + "- Remaining: "
-                        + (remainingLimit == 0 ? ChatColor.RED + "0 (LIMIT REACHED)"
-                                : ChatColor.GREEN + "" + remainingLimit + " Stars"),
+                ChatColor.GRAY + "- Traded This Open: " + (crafted >= MAX_STARS_PER_SESSION ? ChatColor.RED : ChatColor.YELLOW) + crafted + "/" + MAX_STARS_PER_SESSION + " Stars",
+                ChatColor.GRAY + "- Remaining: " + (remainingLimit == 0 ? ChatColor.RED + "0 (LIMIT REACHED)" : ChatColor.GREEN + "" + remainingLimit + " Stars"),
                 "",
-                ChatColor.GREEN + "Click to forge all valid materials!"));
+                ChatColor.GREEN + "Click to forge all valid materials!"
+        ));
         btn.setItemMeta(bm);
         inv.setItem(RESULT_SLOT, btn);
 
@@ -88,8 +86,7 @@ public class AltarGUI implements Listener {
 
     @EventHandler
     public void onClick(InventoryClickEvent e) {
-        if (!ChatColor.stripColor(e.getView().getTitle()).equals("☠ Altar of Triumph ☠"))
-            return;
+        if (!ChatColor.stripColor(e.getView().getTitle()).equals("☠ Altar of Triumph ☠")) return;
 
         if (e.getAction().name().contains("MOVE_TO_OTHER_INVENTORY") || e.getAction().name().contains("HOTBAR")) {
             e.setCancelled(true);
@@ -114,21 +111,12 @@ public class AltarGUI implements Listener {
     }
 
     private void processCrafting(Player p, Inventory inv) {
-        // 1. Quota check (Max 1 per person per active cycle)
-        if (plugin.hasUsedAltarQuota(p)) {
-            p.sendMessage(plugin.PREFIX + ChatColor.RED
-                    + "You have already used your 1-craft quota for this Altar alignment cycle!");
-            p.sendMessage(plugin.PREFIX + ChatColor.GRAY
-                    + "Each player can only craft 1 time per active Altar cycle (1 Hour).");
-            p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
-            return;
-        }
+        ItemStack top = inv.getItem(TOP_CATALYST);
+        ItemStack bot = inv.getItem(BOT_CATALYST);
 
-        // 2. Catalyst check (Left Slot 10 must contain 1x Netherite Block)
-        ItemStack catalyst = inv.getItem(LEFT_CATALYST);
-        if (catalyst == null || catalyst.getType() != Material.NETHERITE_BLOCK || catalyst.getAmount() < 1) {
-            p.sendMessage(plugin.PREFIX + ChatColor.RED
-                    + "You must place 1x Netherite Block in the left slot to activate the Altar!");
+        if (top == null || top.getType() != Material.NETHERITE_INGOT ||
+                bot == null || bot.getType() != Material.NETHERITE_INGOT) {
+            p.sendMessage(plugin.PREFIX + ChatColor.RED + "You must place Netherite Ingots in the top and bottom slots to activate the Altar!");
             p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
             return;
         }
@@ -142,28 +130,21 @@ public class AltarGUI implements Listener {
         for (int slot : gridSlots) {
             ItemStack item = inv.getItem(slot);
             if (item != null) {
-                if (item.getType() == Material.DIAMOND_BLOCK)
-                    diamondBlocks += item.getAmount();
-                else if (item.getType() == Material.NETHERITE_INGOT)
-                    netheriteIngots += item.getAmount();
-                else
-                    invalidItems.add(item.clone());
+                if (item.getType() == Material.DIAMOND_BLOCK) diamondBlocks += item.getAmount();
+                else if (item.getType() == Material.NETHERITE_INGOT) netheriteIngots += item.getAmount();
+                else invalidItems.add(item.clone());
 
                 inv.setItem(slot, null);
             }
         }
 
         if (remainingAllowance <= 0) {
-            p.sendMessage(plugin.PREFIX + ChatColor.RED + "You have reached the limit of " + MAX_STARS_PER_SESSION
-                    + " stars for this Altar session!");
+            p.sendMessage(plugin.PREFIX + ChatColor.RED + "You have reached the limit of " + MAX_STARS_PER_SESSION + " stars for this Altar session!");
             p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
 
-            if (diamondBlocks > 0)
-                inv.addItem(new ItemStack(Material.DIAMOND_BLOCK, diamondBlocks));
-            if (netheriteIngots > 0)
-                inv.addItem(new ItemStack(Material.NETHERITE_INGOT, netheriteIngots));
-            for (ItemStack invalid : invalidItems)
-                inv.addItem(invalid);
+            if (diamondBlocks > 0) inv.addItem(new ItemStack(Material.DIAMOND_BLOCK, diamondBlocks));
+            if (netheriteIngots > 0) inv.addItem(new ItemStack(Material.NETHERITE_INGOT, netheriteIngots));
+            for (ItemStack invalid : invalidItems) inv.addItem(invalid);
             return;
         }
 
@@ -175,12 +156,9 @@ public class AltarGUI implements Listener {
             p.sendMessage(plugin.PREFIX + ChatColor.RED + "Not enough valid materials in the 3x3 grid!");
             p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
 
-            if (diamondBlocks > 0)
-                inv.addItem(new ItemStack(Material.DIAMOND_BLOCK, diamondBlocks));
-            if (netheriteIngots > 0)
-                inv.addItem(new ItemStack(Material.NETHERITE_INGOT, netheriteIngots));
-            for (ItemStack invalid : invalidItems)
-                inv.addItem(invalid);
+            if (diamondBlocks > 0) inv.addItem(new ItemStack(Material.DIAMOND_BLOCK, diamondBlocks));
+            if (netheriteIngots > 0) inv.addItem(new ItemStack(Material.NETHERITE_INGOT, netheriteIngots));
+            for (ItemStack invalid : invalidItems) inv.addItem(invalid);
             return;
         }
 
@@ -202,48 +180,39 @@ public class AltarGUI implements Listener {
 
         for (int i = 0; i < totalStars; i++) {
             HashMap<Integer, ItemStack> left = p.getInventory().addItem(plugin.createStar("triumph"));
-            for (ItemStack l : left.values())
-                p.getWorld().dropItemNaturally(p.getLocation(), l);
+            for (ItemStack l : left.values()) p.getWorld().dropItemNaturally(p.getLocation(), l);
         }
 
         List<ItemStack> itemsToReturn = new ArrayList<>(invalidItems);
-        if (refundDiamondBlocks > 0)
-            itemsToReturn.add(new ItemStack(Material.DIAMOND_BLOCK, refundDiamondBlocks));
-        if (refundNetheriteIngots > 0)
-            itemsToReturn.add(new ItemStack(Material.NETHERITE_INGOT, refundNetheriteIngots));
+        if (refundDiamondBlocks > 0) itemsToReturn.add(new ItemStack(Material.DIAMOND_BLOCK, refundDiamondBlocks));
+        if (refundNetheriteIngots > 0) itemsToReturn.add(new ItemStack(Material.NETHERITE_INGOT, refundNetheriteIngots));
 
         for (ItemStack returnItem : itemsToReturn) {
             HashMap<Integer, ItemStack> left = p.getInventory().addItem(returnItem);
-            for (ItemStack l : left.values())
-                p.getWorld().dropItemNaturally(p.getLocation(), l);
+            for (ItemStack l : left.values()) p.getWorld().dropItemNaturally(p.getLocation(), l);
         }
 
         if (!itemsToReturn.isEmpty()) {
-            p.sendMessage(
-                    plugin.PREFIX + ChatColor.YELLOW + "Excess/Unused materials were returned to your inventory.");
+            p.sendMessage(plugin.PREFIX + ChatColor.YELLOW + "Excess/Unused materials were returned to your inventory.");
         }
 
-        p.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Altar activated! Forged " + ChatColor.GOLD + totalStars
-                + "x Triumph Stars! " + ChatColor.GRAY + "(Session: " + ChatColor.YELLOW + (crafted + totalStars) + "/"
-                + MAX_STARS_PER_SESSION + ChatColor.GRAY + ")");
+        p.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Altar activated! Forged " + ChatColor.GOLD + totalStars + "x Triumph Stars! " + ChatColor.GRAY + "(Session: " + ChatColor.YELLOW + (crafted + totalStars) + "/" + MAX_STARS_PER_SESSION + ChatColor.GRAY + ")");
 
-        // 8. Trigger epic cosmic explosion effect
         Location loc = new Location(Bukkit.getWorlds().get(0), 0, 80, 0);
         playEpicAltarEffect(loc);
     }
 
+    // 🔴 เมธอดสำหรับสร้าง Particle สุดอลังการแบบในภาพ
     private void playEpicAltarEffect(Location centerLoc) {
         CraftingEffectManager.playActivationEffect(plugin, centerLoc);
     }
 
     @EventHandler
     public void onClose(InventoryCloseEvent e) {
-        if (!ChatColor.stripColor(e.getView().getTitle()).equals("☠ Altar of Triumph ☠"))
-            return;
+        if (!ChatColor.stripColor(e.getView().getTitle()).equals("☠ Altar of Triumph ☠")) return;
         Player p = (Player) e.getPlayer();
 
-        // Return catalyst left slot and 3x3 grid slots
-        int[] returnSlots = { LEFT_CATALYST, 3, 4, 5, 12, 13, 14, 21, 22, 23 };
+        int[] returnSlots = {TOP_CATALYST, BOT_CATALYST, 3, 4, 5, 12, 13, 14, 21, 22, 23};
 
         for (int slot : returnSlots) {
             ItemStack item = e.getInventory().getItem(slot);

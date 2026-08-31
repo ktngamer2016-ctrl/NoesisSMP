@@ -6,6 +6,8 @@ import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.util.Vector;
 
 import java.util.Random;
 
@@ -13,123 +15,193 @@ public class CraftingEffectManager {
 
     private static final Random random = new Random();
 
-    // Clean, Celestial Color Palette (Soft Cyan, Warm Gold, Pure White)
-    private static final Color COLOR_CYAN = Color.fromRGB(0, 220, 255);
-    private static final Color COLOR_GOLD = Color.fromRGB(255, 215, 100);
-    private static final Color COLOR_WHITE = Color.fromRGB(255, 255, 255);
+    // Pure black color for lightning tendrils
+    private static final Color COLOR_BLACK = Color.fromRGB(0, 0, 0);
+    private static final Particle.DustOptions PURE_BLACK_DUST = new Particle.DustOptions(COLOR_BLACK, 1.4f);
+    private static final Particle.DustOptions THICK_BLACK_DUST = new Particle.DustOptions(COLOR_BLACK, 2.6f);
 
     /**
-     * Clean & Minimal Ambient Particle Effect for Altar / Crafting Table.
-     * Gentle starlight and soft particles drifting gracefully within 1.5 blocks
-     * around the table.
+     * Ambient particle effect when Crafting Table / Altar is READY / OPEN.
+     * Displays sharp black lightning arcs around the crafting table and enchanting glyphs.
      */
     public static void playAmbientEffect(Location blockLoc) {
-        if (blockLoc == null || blockLoc.getWorld() == null)
-            return;
+        if (blockLoc == null || blockLoc.getWorld() == null) return;
 
-        Location coreLoc = blockLoc.clone().add(0.5, 1.1, 0.5);
+        // Positioned 1 block lower, directly at the crafting table base
+        Location tableLoc = blockLoc.clone().add(0.5, 0.0, 0.5);
 
-        // 1. Subtle, gentle floating starlight particles around top of table (radius
-        // ~1.2m)
-        for (int i = 0; i < 3; i++) {
-            double angle = random.nextDouble() * 2.0 * Math.PI;
-            double dist = 0.3 + random.nextDouble() * 0.9;
-            double offsetX = Math.cos(angle) * dist;
-            double offsetZ = Math.sin(angle) * dist;
-            double offsetY = random.nextDouble() * 0.6;
+        // 1. Enchanting particles swirling around the crafting table
+        tableLoc.getWorld().spawnParticle(Particle.ENCHANT, tableLoc.clone().add(0, 0.5, 0), 12, 0.7, 0.5, 0.7, 0.6);
 
-            Location pLoc = coreLoc.clone().add(offsetX, offsetY, offsetZ);
+        // 2. Sharp black electric lightning arcs crackling around the crafting table
+        if (random.nextDouble() < 0.8) {
+            for (int t = 0; t < 3; t++) {
+                Vector dir = new Vector(
+                        (random.nextDouble() - 0.5) * 1.5,
+                        random.nextDouble() * 0.8 + 0.1,
+                        (random.nextDouble() - 0.5) * 1.5
+                ).normalize();
 
-            Color color = random.nextBoolean() ? COLOR_CYAN : (random.nextBoolean() ? COLOR_GOLD : COLOR_WHITE);
-            coreLoc.getWorld().spawnParticle(
-                    Particle.DUST,
-                    pLoc,
-                    1, 0, 0.02, 0, 0,
-                    new Particle.DustOptions(color, 0.9f));
+                Location curr = tableLoc.clone().add((random.nextDouble() - 0.5) * 0.8, random.nextDouble() * 0.6, (random.nextDouble() - 0.5) * 0.8);
+
+                double arcLength = 2.5 + random.nextDouble() * 2.5;
+                for (double s = 0; s < arcLength; s += 0.2) {
+                    if (random.nextDouble() < 0.35) {
+                        dir.add(new Vector(
+                                (random.nextDouble() - 0.5) * 0.7,
+                                (random.nextDouble() - 0.5) * 0.6,
+                                (random.nextDouble() - 0.5) * 0.7
+                        )).normalize();
+                    }
+                    curr.add(dir.clone().multiply(0.2));
+                    tableLoc.getWorld().spawnParticle(Particle.DUST, curr, 1, 0, 0, 0, 0, PURE_BLACK_DUST);
+                    if (random.nextDouble() < 0.25) {
+                        tableLoc.getWorld().spawnParticle(Particle.SQUID_INK, curr, 1, 0, 0, 0, 0.01);
+                    }
+                }
+            }
         }
-
-        // 2. A few subtle enchantment glyphs floating gracefully toward center
-        if (random.nextDouble() < 0.4) {
-            coreLoc.getWorld().spawnParticle(
-                    Particle.ENCHANT,
-                    coreLoc.clone().add((random.nextDouble() - 0.5) * 0.8, 0.2 + random.nextDouble() * 0.4,
-                            (random.nextDouble() - 0.5) * 0.8),
-                    2, 0.1, 0.1, 0.1, 0.2);
-        }
-
-        // 3. Subtle center soft glow dot
-        coreLoc.getWorld().spawnParticle(
-                Particle.DUST,
-                coreLoc.clone().add(0, 0.05, 0),
-                1, 0.02, 0.02, 0.02, 0,
-                new Particle.DustOptions(COLOR_GOLD, 1.1f));
     }
 
     /**
-     * Sleek, Elegant & Clean Activation Burst when crafting/using the Altar.
-     * Creates a crisp, beautiful ring, vertical light beam, and satisfying chime
-     * without screen clutter.
+     * Massive black lightning burst effect when Crafting Table / Altar is USED, ACTIVATED or APPEARS.
+     * Pure black branching lightning arcing out from the crafting table with enchanting glyphs.
      */
     public static void playActivationEffect(JavaPlugin plugin, Location blockLoc) {
-        if (blockLoc == null || blockLoc.getWorld() == null)
-            return;
+        if (blockLoc == null || blockLoc.getWorld() == null) return;
 
-        Location coreLoc = blockLoc.clone().add(0.5, 1.0, 0.5);
+        // Positioned 1 block lower, directly at the crafting table base
+        Location tableLoc = blockLoc.clone().add(0.5, 0.0, 0.5);
 
-        // 1. Clean expanding ring around table (radius 1.3 blocks max)
-        for (int degree = 0; degree < 360; degree += 15) {
-            double rad = Math.toRadians(degree);
-            double x = Math.cos(rad) * 1.3;
-            double z = Math.sin(rad) * 1.3;
-            Location ringLoc = coreLoc.clone().add(x, 0.2, z);
+        // 1. Enchanting particle burst around the table
+        tableLoc.getWorld().spawnParticle(Particle.ENCHANT, tableLoc.clone().add(0, 0.5, 0), 100, 1.5, 1.0, 1.5, 1.2);
 
-            Color ringColor = (degree % 30 == 0) ? COLOR_GOLD : COLOR_CYAN;
-            ringLoc.getWorld().spawnParticle(
-                    Particle.DUST,
-                    ringLoc,
-                    1, 0.02, 0.02, 0.02, 0,
-                    new Particle.DustOptions(ringColor, 1.2f));
-        }
+        // 2. Animated Far-Reaching Branching Black Lightning
+        new BukkitRunnable() {
+            int wave = 0;
 
-        // 2. Clean vertical beam of light rising up gracefully (2.5 blocks height)
-        for (double y = 0.2; y <= 2.5; y += 0.3) {
-            Location beamLoc = coreLoc.clone().add(0, y, 0);
-            coreLoc.getWorld().spawnParticle(
-                    Particle.DUST,
-                    beamLoc,
-                    1, 0.05, 0.02, 0.05, 0,
-                    new Particle.DustOptions(COLOR_WHITE, 1.4f));
-        }
+            @Override
+            public void run() {
+                if (wave >= 6) {
+                    this.cancel();
+                    return;
+                }
 
-        // 3. Soft sparkle burst at core
-        coreLoc.getWorld().spawnParticle(Particle.END_ROD, coreLoc.clone().add(0, 0.5, 0), 12, 0.3, 0.5, 0.3, 0.08);
+                // 10 main black lightning bolts per wave = 60 bolts total
+                for (int b = 0; b < 10; b++) {
+                    double dx = (random.nextDouble() - 0.5) * 2.0;
+                    double dy = random.nextDouble() * 1.5 + 0.2; // Upward & outward surge
+                    double dz = (random.nextDouble() - 0.5) * 2.0;
+                    Vector direction = new Vector(dx, dy, dz).normalize();
 
-        // 4. Elegant & Satisfying Soundscape
-        coreLoc.getWorld().playSound(coreLoc, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 1.5f, 1.2f);
-        coreLoc.getWorld().playSound(coreLoc, Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.4f);
-        coreLoc.getWorld().playSound(coreLoc, Sound.BLOCK_BEACON_ACTIVATE, 1.2f, 1.5f);
+                    Location current = tableLoc.clone().add(0, 0.2, 0);
+                    float initialScale = 3.0f;
+
+                    // Farther reach: 20 to 38 blocks!
+                    double maxReach = 20.0 + (random.nextDouble() * 18.0);
+
+                    for (double step = 0; step < maxReach; step += 0.22) {
+                        // Sharp angular lightning zig-zags
+                        if (random.nextDouble() < 0.38) {
+                            direction.add(new Vector(
+                                    (random.nextDouble() - 0.5) * 0.75,
+                                    (random.nextDouble() - 0.5) * 0.65,
+                                    (random.nextDouble() - 0.5) * 0.75
+                            )).normalize();
+                        }
+                        current.add(direction.clone().multiply(0.22));
+
+                        float currentScale = (float) Math.max(0.7, initialScale * (1.0 - (step / maxReach)));
+                        Particle.DustOptions stepDust = new Particle.DustOptions(COLOR_BLACK, currentScale);
+
+                        current.getWorld().spawnParticle(Particle.DUST, current, 1, 0, 0, 0, 0, stepDust);
+
+                        if (random.nextDouble() < 0.3) {
+                            current.getWorld().spawnParticle(Particle.SQUID_INK, current, 1, 0, 0, 0, 0.01);
+                        }
+
+                        // Primary Branch Forks (แตกกิ่งสายฟ้าแยกออกไปไกล)
+                        if (random.nextDouble() < 0.07 && step < maxReach * 0.85) {
+                            Vector branchDir = direction.clone().add(new Vector(
+                                    (random.nextDouble() - 0.5) * 1.1,
+                                    (random.nextDouble() - 0.5) * 0.9,
+                                    (random.nextDouble() - 0.5) * 1.1
+                            )).normalize();
+
+                            Location branchCurrent = current.clone();
+                            double branchLength = 6.0 + random.nextDouble() * 10.0; // 6 to 16 blocks branch reach
+
+                            for (double branchStep = 0; branchStep < branchLength; branchStep += 0.22) {
+                                if (random.nextDouble() < 0.35) {
+                                    branchDir.add(new Vector(
+                                            (random.nextDouble() - 0.5) * 0.7,
+                                            (random.nextDouble() - 0.5) * 0.6,
+                                            (random.nextDouble() - 0.5) * 0.7
+                                    )).normalize();
+                                }
+                                branchCurrent.add(branchDir.clone().multiply(0.22));
+
+                                float branchScale = (float) Math.max(0.5, 1.8 * (1.0 - (branchStep / branchLength)));
+                                branchCurrent.getWorld().spawnParticle(
+                                        Particle.DUST, branchCurrent, 1, 0, 0, 0, 0,
+                                        new Particle.DustOptions(COLOR_BLACK, branchScale)
+                                );
+
+                                if (random.nextDouble() < 0.2) {
+                                    branchCurrent.getWorld().spawnParticle(Particle.SQUID_INK, branchCurrent, 1, 0, 0, 0, 0.01);
+                                }
+
+                                // Secondary Sub-branch Fork
+                                if (random.nextDouble() < 0.05 && branchStep < branchLength * 0.7) {
+                                    Vector subDir = branchDir.clone().add(new Vector(
+                                            (random.nextDouble() - 0.5) * 1.2,
+                                            (random.nextDouble() - 0.5) * 1.0,
+                                            (random.nextDouble() - 0.5) * 1.2
+                                    )).normalize();
+
+                                    Location subCurrent = branchCurrent.clone();
+                                    double subLength = 3.0 + random.nextDouble() * 5.0;
+
+                                    for (double subStep = 0; subStep < subLength; subStep += 0.25) {
+                                        subCurrent.add(subDir.clone().multiply(0.25));
+                                        subCurrent.getWorld().spawnParticle(
+                                                Particle.DUST, subCurrent, 1, 0, 0, 0, 0,
+                                                new Particle.DustOptions(COLOR_BLACK, 0.9f)
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                wave++;
+            }
+        }.runTaskTimer(plugin, 0L, 2L);
+
+        // 3. Sound Effects
+        tableLoc.getWorld().playSound(tableLoc, Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 2.0f, 0.5f);
+        tableLoc.getWorld().playSound(tableLoc, Sound.ITEM_TRIDENT_THUNDER, 1.6f, 0.7f);
+        tableLoc.getWorld().playSound(tableLoc, Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1.5f, 0.7f);
+        tableLoc.getWorld().playSound(tableLoc, Sound.BLOCK_PORTAL_TRAVEL, 0.8f, 1.4f);
     }
 
     /**
-     * Subtle & Clean Interaction Effect when opening/clicking the Altar.
+     * Interaction burst when player opens or clicks the Crafting Table.
      */
     public static void playInteractEffect(Location blockLoc, Player player) {
-        if (blockLoc == null || blockLoc.getWorld() == null)
-            return;
+        if (blockLoc == null || blockLoc.getWorld() == null) return;
 
         Location tableLoc = blockLoc.clone().add(0.5, 0.0, 0.5);
 
-        // Clean subtle sparkles
-        topLoc.getWorld().spawnParticle(Particle.END_ROD, topLoc, 4, 0.15, 0.15, 0.15, 0.03);
-        topLoc.getWorld().spawnParticle(
-                Particle.DUST,
-                topLoc,
-                4, 0.1, 0.1, 0.1, 0,
-                new Particle.DustOptions(COLOR_CYAN, 1.1f));
+        // Black electric burst & enchanting particles right at crafting table
+        tableLoc.getWorld().spawnParticle(Particle.ENCHANT, tableLoc.clone().add(0, 0.5, 0), 30, 0.6, 0.4, 0.6, 0.8);
+        for (int i = 0; i < 25; i++) {
+            Vector v = new Vector(random.nextDouble() - 0.5, random.nextDouble() * 0.6 + 0.1, random.nextDouble() - 0.5).normalize().multiply(0.35);
+            tableLoc.getWorld().spawnParticle(Particle.DUST, tableLoc.clone().add(0, 0.5, 0), 1, v.getX(), v.getY(), v.getZ(), 0.1, THICK_BLACK_DUST);
+        }
 
         if (player != null) {
-            player.playSound(blockLoc, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 1.0f, 1.5f);
-            player.playSound(blockLoc, Sound.BLOCK_ENCHANTMENT_TABLE_USE, 0.8f, 1.3f);
+            player.playSound(blockLoc, Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1.0f, 0.8f);
         }
     }
 }

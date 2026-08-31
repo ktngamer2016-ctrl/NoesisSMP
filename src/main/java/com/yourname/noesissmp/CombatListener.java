@@ -4,6 +4,7 @@ import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
@@ -259,27 +260,25 @@ public class CombatListener implements Listener {
         if (targetLoc == null || targetLoc.getWorld() == null) return;
         org.bukkit.World world = targetLoc.getWorld();
 
-        // 1. Crisp thunderous impact audio
+        // 1. Audio Impact (Crisp thunder & explosive crackle)
         try {
-            world.playSound(targetLoc, Sound.ENTITY_LIGHTNING_BOLT_IMPACT, 1.2f, 0.5f);
-            world.playSound(targetLoc, Sound.ITEM_TRIDENT_THUNDER, 1.4f, 0.7f);
-            world.playSound(targetLoc, Sound.ENTITY_GENERIC_EXPLODE, 0.7f, 1.2f);
-            world.playSound(targetLoc, Sound.ENTITY_PLAYER_ATTACK_CRIT, 1.0f, 0.5f);
+            world.playSound(targetLoc, Sound.ENTITY_LIGHTNING_BOLT_IMPACT, 1.4f, 0.5f);
+            world.playSound(targetLoc, Sound.ITEM_TRIDENT_THUNDER, 1.5f, 0.6f);
+            world.playSound(targetLoc, Sound.ENTITY_GENERIC_EXPLODE, 0.8f, 1.2f);
+            world.playSound(targetLoc, Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1.2f, 0.6f);
+            world.playSound(targetLoc, Sound.ENTITY_PLAYER_ATTACK_CRIT, 1.2f, 0.5f);
         } catch (Throwable ignored) {}
 
-        Particle.DustOptions pureBlack = new Particle.DustOptions(org.bukkit.Color.fromRGB(0, 0, 0), 1.3f);
-
-        // 2. Compact center spark & dark shock burst on the target
+        // 2. Core Flash & Impact Spark
         try {
-            world.spawnParticle(Particle.FLASH, targetLoc, 1, 0.0, 0.0, 0.0, 0.0);
-            world.spawnParticle(Particle.EXPLOSION, targetLoc, 1, 0.0, 0.0, 0.0, 0.0);
-            world.spawnParticle(Particle.SQUID_INK, targetLoc, 8, 0.15, 0.15, 0.15, 0.03);
-            world.spawnParticle(Particle.DUST, targetLoc, 12, 0.2, 0.2, 0.2, 0.0, pureBlack);
+            world.spawnParticle(Particle.FLASH, targetLoc, 1, 0, 0, 0, 0);
+            world.spawnParticle(Particle.ENCHANT, targetLoc, 20, 0.3, 0.3, 0.3, 0.5);
+            world.spawnParticle(Particle.SQUID_INK, targetLoc, 4, 0.1, 0.1, 0.1, 0.02);
         } catch (Throwable ignored) {}
 
-        // 3. Directional Black Lightning: surges from target -> towards & past the attacker
+        // 3. Direction Vector: surges from targetLoc towards & past attackerLoc
         Vector baseDir;
-        double distToAttacker = 3.0;
+        double distToAttacker = 2.5;
 
         if (attackerLoc != null && attackerLoc.getWorld() != null && attackerLoc.getWorld().equals(world)) {
             baseDir = attackerLoc.toVector().subtract(targetLoc.toVector());
@@ -291,104 +290,175 @@ public class CombatListener implements Listener {
                 baseDir = attackerLoc.getDirection().multiply(-1).normalize();
             }
         } else {
-            baseDir = new Vector(0, 0.5, 0).normalize();
+            baseDir = new Vector(0, 0.6, 0).normalize();
         }
 
         final Vector mainDir = baseDir;
         final double targetDist = distToAttacker;
+        final Color COLOR_BLACK = Color.fromRGB(0, 0, 0);
+        final java.util.Random rand = new java.util.Random();
 
-        java.util.Random rand = new java.util.Random();
-        int numBolts = 14;
-        java.util.List<java.util.List<Location>> boltPaths = new java.util.ArrayList<>();
-
-        for (int i = 0; i < numBolts; i++) {
-            // Start right at the target's body
-            Location start = targetLoc.clone().add(
-                    (rand.nextDouble() - 0.5) * 0.3,
-                    (rand.nextDouble() - 0.5) * 0.3,
-                    (rand.nextDouble() - 0.5) * 0.3
-            );
-
-            // Direction angled towards and past the attacker, with a fan spread
-            Vector boltDir = mainDir.clone().add(new Vector(
-                    (rand.nextDouble() - 0.5) * 0.7,
-                    (rand.nextDouble() - 0.5) * 0.6,
-                    (rand.nextDouble() - 0.5) * 0.7
-            )).normalize();
-
-            Location current = start.clone();
-            // Reach reaches past the user compactly (attacker dist + 0.8 to 2.8 blocks)
-            double totalReach = Math.max(2.5, targetDist + 0.8 + (rand.nextDouble() * 2.0));
-            java.util.List<Location> mainPath = new java.util.ArrayList<>();
-
-            for (double step = 0; step < totalReach; step += 0.22) {
-                // Sharp angular lightning zig-zags
-                if (rand.nextDouble() < 0.40) {
-                    boltDir.add(new Vector(
-                            (rand.nextDouble() - 0.5) * 0.8,
-                            (rand.nextDouble() - 0.5) * 0.7,
-                            (rand.nextDouble() - 0.5) * 0.8
-                    )).normalize();
-                }
-                current.add(boltDir.clone().multiply(0.22));
-                mainPath.add(current.clone());
-
-                // Branching lightning forks past the attacker
-                if (rand.nextDouble() < 0.08 && step > 0.8 && step < totalReach * 0.85) {
-                    Vector forkDir = boltDir.clone().add(new Vector(
-                            (rand.nextDouble() - 0.5) * 1.2,
-                            (rand.nextDouble() - 0.5) * 1.0,
-                            (rand.nextDouble() - 0.5) * 1.2
-                    )).normalize();
-
-                    Location forkCurr = current.clone();
-                    double forkLen = 1.2 + rand.nextDouble() * 1.8;
-                    java.util.List<Location> forkPath = new java.util.ArrayList<>();
-
-                    for (double fStep = 0; fStep < forkLen; fStep += 0.24) {
-                        if (rand.nextDouble() < 0.35) {
-                            forkDir.add(new Vector(
-                                    (rand.nextDouble() - 0.5) * 0.6,
-                                    (rand.nextDouble() - 0.5) * 0.5,
-                                    (rand.nextDouble() - 0.5) * 0.6
-                            )).normalize();
-                        }
-                        forkCurr.add(forkDir.clone().multiply(0.24));
-                        forkPath.add(forkCurr.clone());
-                    }
-                    boltPaths.add(forkPath);
-                }
-            }
-            boltPaths.add(mainPath);
-        }
-
-        // Persistent Lingering Animation: keeps black lightning crackling in the air for ~1.2 seconds
+        // 4. Multi-wave razor-thin branching black lightning (Crisp, defined, sharp lines)
         new BukkitRunnable() {
-            int tick = 0;
-            final int totalTicks = 24;
+            int wave = 0;
+            final int maxWaves = 4;
 
             @Override
             public void run() {
-                if (tick >= totalTicks) {
+                if (wave >= maxWaves) {
                     this.cancel();
                     return;
                 }
 
-                double fade = 1.0 - ((double) tick / totalTicks);
-                float boltScale = (float) Math.max(0.45, 1.4 * fade);
-                Particle.DustOptions dust = new Particle.DustOptions(org.bukkit.Color.fromRGB(0, 0, 0), boltScale);
+                // 8 razor-thin branching lightning bolts per wave
+                for (int b = 0; b < 8; b++) {
+                    Vector direction = mainDir.clone().add(new Vector(
+                            (rand.nextDouble() - 0.5) * 0.75,
+                            (rand.nextDouble() - 0.5) * 0.65,
+                            (rand.nextDouble() - 0.5) * 0.75
+                    )).normalize();
 
-                for (java.util.List<Location> path : boltPaths) {
-                    for (int pIdx = 0; pIdx < path.size(); pIdx++) {
-                        if (tick > 10 && (pIdx + tick) % 3 == 0) continue;
+                    Location current = targetLoc.clone().add(
+                            (rand.nextDouble() - 0.5) * 0.2,
+                            (rand.nextDouble() - 0.5) * 0.2,
+                            (rand.nextDouble() - 0.5) * 0.2
+                    );
 
-                        Location pt = path.get(pIdx);
-                        world.spawnParticle(Particle.DUST, pt, 1, 0, 0, 0, 0, dust);
+                    float initialScale = 0.85f; // Thin, sharp scale
+                    double maxReach = Math.max(3.2, targetDist + 1.2 + (rand.nextDouble() * 2.8));
 
-                        if (tick < 8 && rand.nextDouble() < 0.04) {
-                            world.spawnParticle(Particle.SQUID_INK, pt, 1, 0, 0, 0, 0.01);
+                    for (double step = 0; step < maxReach; step += 0.15) {
+                        // Sharp angular lightning zig-zags
+                        if (rand.nextDouble() < 0.38) {
+                            direction.add(new Vector(
+                                    (rand.nextDouble() - 0.5) * 0.75,
+                                    (rand.nextDouble() - 0.5) * 0.65,
+                                    (rand.nextDouble() - 0.5) * 0.75
+                            )).normalize();
+                        }
+                        current.add(direction.clone().multiply(0.15));
+
+                        float currentScale = (float) Math.max(0.35, initialScale * (1.0 - (step / maxReach)));
+                        Particle.DustOptions stepDust = new Particle.DustOptions(COLOR_BLACK, currentScale);
+
+                        world.spawnParticle(Particle.DUST, current, 1, 0, 0, 0, 0, stepDust);
+
+                        // Primary Branch Forks (razor-thin branch tendrils)
+                        if (rand.nextDouble() < 0.08 && step < maxReach * 0.85) {
+                            Vector branchDir = direction.clone().add(new Vector(
+                                    (rand.nextDouble() - 0.5) * 1.1,
+                                    (rand.nextDouble() - 0.5) * 0.9,
+                                    (rand.nextDouble() - 0.5) * 1.1
+                            )).normalize();
+
+                            Location branchCurrent = current.clone();
+                            double branchLength = 1.2 + rand.nextDouble() * 2.2;
+
+                            for (double branchStep = 0; branchStep < branchLength; branchStep += 0.15) {
+                                if (rand.nextDouble() < 0.35) {
+                                    branchDir.add(new Vector(
+                                            (rand.nextDouble() - 0.5) * 0.7,
+                                            (rand.nextDouble() - 0.5) * 0.6,
+                                            (rand.nextDouble() - 0.5) * 0.7
+                                    )).normalize();
+                                }
+                                branchCurrent.add(branchDir.clone().multiply(0.15));
+
+                                float branchScale = (float) Math.max(0.30, 0.65 * (1.0 - (branchStep / branchLength)));
+                                world.spawnParticle(
+                                        Particle.DUST, branchCurrent, 1, 0, 0, 0, 0,
+                                        new Particle.DustOptions(COLOR_BLACK, branchScale)
+                                );
+
+                                // Secondary Sub-branch Fork
+                                if (rand.nextDouble() < 0.06 && branchStep < branchLength * 0.7) {
+                                    Vector subDir = branchDir.clone().add(new Vector(
+                                            (rand.nextDouble() - 0.5) * 1.2,
+                                            (rand.nextDouble() - 0.5) * 1.0,
+                                            (rand.nextDouble() - 0.5) * 1.2
+                                    )).normalize();
+
+                                    Location subCurrent = branchCurrent.clone();
+                                    double subLength = 0.8 + rand.nextDouble() * 1.2;
+
+                                    for (double subStep = 0; subStep < subLength; subStep += 0.16) {
+                                        subCurrent.add(subDir.clone().multiply(0.16));
+                                        world.spawnParticle(
+                                                Particle.DUST, subCurrent, 1, 0, 0, 0, 0,
+                                                new Particle.DustOptions(COLOR_BLACK, 0.35f)
+                                        );
+                                    }
+                                }
+                            }
                         }
                     }
+                }
+                wave++;
+            }
+        }.runTaskTimer(plugin, 0L, 2L);
+
+        // 5. Scattered Crit Aura Embers (All 4 colors: Purple, Red, Orange, Yellow appear simultaneously)
+        final Color COLOR_PURPLE = Color.fromRGB(185, 50, 255); // The Zone Purple
+        final Color COLOR_RED = Color.fromRGB(255, 40, 40);      // Tier 3 Red
+        final Color COLOR_ORANGE = Color.fromRGB(255, 140, 0);   // Tier 2 Orange
+        final Color COLOR_YELLOW = Color.fromRGB(255, 230, 30);  // Tier 1 Yellow
+        final Color[] ALL_CRIT_COLORS = new Color[]{COLOR_PURPLE, COLOR_RED, COLOR_ORANGE, COLOR_YELLOW};
+
+        class FloatingEmber {
+            final Location loc;
+            final Vector vel;
+            final Color color;
+
+            FloatingEmber(Location loc, Vector vel, Color color) {
+                this.loc = loc;
+                this.vel = vel;
+                this.color = color;
+            }
+        }
+
+        final java.util.List<FloatingEmber> embers = new java.util.ArrayList<>();
+        // For each of the 4 colors, spawn 5 distinct embers scattered in the air
+        for (Color color : ALL_CRIT_COLORS) {
+            for (int k = 0; k < 5; k++) {
+                double progress = rand.nextDouble() * Math.min(targetDist + 1.5, 3.8);
+                Location spawnLoc = targetLoc.clone().add(mainDir.clone().multiply(progress)).add(
+                        (rand.nextDouble() - 0.5) * 1.8,
+                        (rand.nextDouble() - 0.5) * 1.2 + 0.2,
+                        (rand.nextDouble() - 0.5) * 1.8
+                );
+                Vector vel = new Vector(
+                        (rand.nextDouble() - 0.5) * 0.035,
+                        rand.nextDouble() * 0.03 + 0.015,
+                        (rand.nextDouble() - 0.5) * 0.035
+                );
+                embers.add(new FloatingEmber(spawnLoc, vel, color));
+            }
+        }
+
+        new BukkitRunnable() {
+            int tick = 0;
+            final int maxTicks = 30; // ~1.5s slow fade
+
+            @Override
+            public void run() {
+                if (tick >= maxTicks) {
+                    this.cancel();
+                    return;
+                }
+
+                float scale = (float) Math.max(0.35, 1.15 * (1.0 - ((double) tick / maxTicks)));
+
+                for (FloatingEmber ember : embers) {
+                    ember.loc.add(ember.vel);
+                    ember.vel.multiply(0.96); // Soft drag
+                    ember.vel.setY(ember.vel.getY() + 0.001); // Gentle upward float
+
+                    world.spawnParticle(
+                            Particle.DUST,
+                            ember.loc,
+                            1, 0, 0, 0, 0,
+                            new Particle.DustOptions(ember.color, scale)
+                    );
                 }
 
                 tick += 2;

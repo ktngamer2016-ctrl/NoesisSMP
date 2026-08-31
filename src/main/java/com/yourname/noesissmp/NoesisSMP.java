@@ -13,7 +13,6 @@ import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.TabCompleter;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -128,14 +127,12 @@ public final class NoesisSMP extends JavaPlugin {
                         }
                     }
                 }
-                // 🔴 เช็คหมดคูลดาวน์ (เปิดอัตโนมัติ 1 ชั่วโมง & รีเซ็ตโควต้า)
+                // 🔴 เช็คหมดคูลดาวน์ (เปิดอัตโนมัติ 1 ชั่วโมง)
                 else if (!altarOpen && now >= altarCooldownTime) {
                     altarOpen = true;
                     altarCloseTime = now + (1L * 60 * 60 * 1000);
-                    altarUsedPlayers.clear();
                     getConfig().set("altar.is_open", true);
                     getConfig().set("altar.close_time", altarCloseTime);
-                    getConfig().set("altar.used_players", new ArrayList<>());
                     saveConfig();
                     if (altarGUI != null) altarGUI.resetSession();
 
@@ -580,7 +577,7 @@ public final class NoesisSMP extends JavaPlugin {
                     saveConfig();
                     if (altarGUI != null) altarGUI.resetSession();
 
-                    Bukkit.broadcastMessage(PREFIX + ChatColor.GREEN + "✨ An Admin has FORCE OPENED the Altar of Triumph for 1 Hour! Quotas reset! ✨");
+                    Bukkit.broadcastMessage(PREFIX + ChatColor.GREEN + "✨ An Admin has FORCE OPENED the Altar of Triumph for 1 Hour! ✨");
                     for (Player p : Bukkit.getOnlinePlayers()) p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
                     Location altarLoc = new Location(Bukkit.getWorlds().get(0), 0, 80, 0);
                     CraftingEffectManager.playActivationEffect(this, altarLoc);
