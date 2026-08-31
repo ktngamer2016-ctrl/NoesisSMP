@@ -45,8 +45,7 @@ public class NoesisInfoGUI implements Listener {
                     "",
                     "&6▶ Star Manager (/noesis):",
                     "&7- Convert Overflow into Triumph Stars.",
-                    "&7- Change reward modes (Auto/Inv/EC/Cloud)."
-            ));
+                    "&7- Change reward modes (Auto/Inv/EC/Cloud)."));
 
             gui.setItem(11, createItem(Material.IRON_SWORD, "&c&l2. Combat & PVP Rules",
                     "&4▶ PVP Rules (Consent Required!):",
@@ -58,8 +57,7 @@ public class NoesisInfoGUI implements Listener {
                     "",
                     "&6▶ Dynamic Bounty (40+ Point Gap):",
                     "&7- &aGiant Slayer:&7 Shatter up to 60% of victim's",
-                    "&7  Overflow into Triumph Stars & get Bonus Souls!"
-            ));
+                    "&7  Overflow into Triumph Stars & get Bonus Souls!"));
 
             gui.setItem(12, createItem(Material.MACE, "&5&l3. Items & Restrictions",
                     "&d▶ Abyssal Mace (Custom Recipe!):",
@@ -72,8 +70,7 @@ public class NoesisInfoGUI implements Listener {
                     "&7- Using all 16 triggers 60s cooldown.",
                     "",
                     "&c▶ Banned:",
-                    "&7- Strength Potions, End Crystals, Minecart TNT."
-            ));
+                    "&7- Strength Potions, End Crystals, Minecart TNT."));
 
             gui.setItem(14, createItem(Material.BLAZE_POWDER, "&6&l4. Critical & The Zone",
                     "&e▶ Crit Stack System:",
@@ -87,24 +84,23 @@ public class NoesisInfoGUI implements Listener {
                     "",
                     "&5▶ THE ZONE (Black Crit):",
                     "&7- &l4.0x DMG&7. Enters THE ZONE (15s).",
-                    "&7- 100% Crit chance. Select paths via &b/noesis zone"
-            ));
+                    "&7- 100% Crit chance. Select paths via &b/noesis zone"));
 
             gui.setItem(15, createItem(Material.CRAFTING_TABLE, "&d&l5. Altar of Triumph",
                     "&e▶ Location & Cycle:",
                     "&7- Fixed at &bX:0, Y:80, Z:0 &7(Unbreakable).",
-                    "&7- Opens 30 mins, Cooldown 3 hours.",
+                    "&7- Opens 1 Hour, Cooldown 48 Hours.",
                     "&7- Check status: &b/noesis altar status",
                     "",
                     "&c▶ How to Forge Stars:",
-                    "&7- Requires &82x Netherite Ingots&7 (Top & Bottom).",
-                    "&7- Put ores in 3x3 grid (Leftovers are returned).",
+                    "&7- Requires &81x Netherite Block&7 (Left Slot).",
+                    "&7- &eQuota:&7 1 Craft per Player per Cycle.",
+                    "&7- Put materials in 3x3 middle grid (Leftovers returned).",
                     "",
                     "&a▶ Exchange Rates (per 1 Star):",
                     "&7- &b7x Diamond Block &7➔ &61 Star",
                     "&7- &82x Netherite Ingot &7➔ &61 Star",
-                    "&e- Limit: Max 10 Stars per Altar Open."
-            ));
+                    "&e- Limit: Max 10 Stars per Altar Open."));
 
             gui.setItem(16, createItem(Material.WITHER_SKELETON_SKULL, "&9&l6. Event System (/event)",
                     "&c▶ PVP Modes (Random TP 50 blocks):",
@@ -116,8 +112,7 @@ public class NoesisInfoGUI implements Listener {
                     "",
                     "&e▶ Rewards:",
                     "&7- Die/Lose = 1x Reward.",
-                    "&7- Win/Survive = 3x Rewards."
-            ));
+                    "&7- Win/Survive = 3x Rewards."));
 
             gui.setItem(31, createItem(Material.ARROW, "&c<- Back", "&7Return to language selection"));
         } else {
@@ -128,8 +123,7 @@ public class NoesisInfoGUI implements Listener {
                     "",
                     "&6▶ เมนูจัดการดาว (/noesis):",
                     "&7- ใช้ 1 Overflow สกัดเป็น 1 Triumph Star",
-                    "&7- ปรับโหมดรับดาว (เข้าตัว/กล่อง/Cloud)"
-            ));
+                    "&7- ปรับโหมดรับดาว (เข้าตัว/กล่อง/Cloud)"));
 
             gui.setItem(11, createItem(Material.IRON_SWORD, "&c&l2. กฎการต่อสู้ (Combat)",
                     "&4▶ กฎ PVP (ต้องยินยอมเท่านั้น!):",
@@ -141,8 +135,7 @@ public class NoesisInfoGUI implements Listener {
                     "",
                     "&6▶ ระบบสมดุล (แต้มห่าง 40+):",
                     "&7- &aล้มยักษ์:&7 สกัดแต้ม Overflow ทิ้งสูงสุด 60%",
-                    "&7  เปลี่ยนเป็นดาวให้คนฆ่า พร้อมแจก Soul โบนัส!"
-            ));
+                    "&7  เปลี่ยนเป็นดาวให้คนฆ่า พร้อมแจก Soul โบนัส!"));
 
             gui.setItem(12, createItem(Material.MACE, "&5&l3. ไอเทมและข้อจำกัด",
                     "&d▶ กระบอง Abyssal Mace:",
@@ -155,8 +148,7 @@ public class NoesisInfoGUI implements Listener {
                     "&7- ปาครบ 16 ลูกรวดเดียว ติดคูลดาวน์ 60 วิ",
                     "",
                     "&c▶ ระบบที่แบน:",
-                    "&7- ยา Strength, คริสตัล (CPvP), ระเบิด TNT รถราง"
-            ));
+                    "&7- ยา Strength, คริสตัล (CPvP), ระเบิด TNT รถราง"));
 
             gui.setItem(14, createItem(Material.BLAZE_POWDER, "&6&l4. คริติคอล & THE ZONE",
                     "&e▶ ระบบสะสมคริติคอล:",
@@ -169,24 +161,23 @@ public class NoesisInfoGUI implements Listener {
                     "",
                     "&5▶ THE ZONE (คริสีดำ):",
                     "&7- ดาเมจ &l4.0x&7 และเข้าสู่โหมด THE ZONE (15วิ)",
-                    "&7- &aคริ 100%&7 เลือกสายอัปสกิลได้ด้วย &b/noesis zone"
-            ));
+                    "&7- &aคริ 100%&7 เลือกสายอัปสกิลได้ด้วย &b/noesis zone"));
 
             gui.setItem(15, createItem(Material.CRAFTING_TABLE, "&d&l5. แท่น Altar of Triumph",
                     "&e▶ พิกัดและเวลาทำงาน:",
                     "&7- ตั้งอยู่ที่ &bX:0, Y:80, Z:0 &7(พังไม่ได้)",
-                    "&7- เปิดรอบละ 30 นาที สลับคูลดาวน์ 3 ชั่วโมง",
+                    "&7- เปิดรอบละ 1 ชั่วโมง สลับคูลดาวน์ 48 ชั่วโมง",
                     "&7- เช็คเวลาเปิดได้ด้วย &b/noesis altar status",
                     "",
                     "&c▶ วิธีคราฟต์ดาว (Triumph Star):",
-                    "&7- บังคับใส่ &8Netherite Ingot 2 อัน&7 (บน-ล่าง) เพื่อเดินเครื่อง",
+                    "&7- ต้องใส่ &8Netherite Block 1 บล็อก&7 ในช่องทางซ้ายเพื่อเดินเครื่อง",
+                    "&7- &eโควต้า:&7 คราฟต์ได้สูงสุด 1 ครั้ง / คน / รอบที่เปิด",
                     "&7- โยนแร่ผสมกันใน 3x3 ตรงกลาง (แร่เศษๆจะเด้งคืนให้)",
                     "",
                     "&a▶ อัตราแลกเปลี่ยน (ต่อ 1 ดาว):",
                     "&7- &bบล็อกเพชร 7 บล็อก &7➔ &61 ดาว",
                     "&7- &8เนเธอร์ไรต์ 2 แท่ง &7➔ &61 ดาว",
-                    "&e- จำกัด: สูงสุด 10 ดาว ต่อรอบแท่นเปิด"
-            ));
+                    "&e- จำกัด: สูงสุด 10 ดาว ต่อรอบแท่นเปิด"));
 
             gui.setItem(16, createItem(Material.WITHER_SKELETON_SKULL, "&9&l6. ระบบกิจกรรม (/event)",
                     "&c▶ โหมด PVP (สุ่มเกิด 50 บล็อก):",
@@ -198,8 +189,7 @@ public class NoesisInfoGUI implements Listener {
                     "",
                     "&e▶ ของรางวัล:",
                     "&7- แพ้/ตาย = รับรางวัลปลอบใจ 1 ชิ้น",
-                    "&7- ชนะ/รอด = รับรางวัล 3 ชิ้น"
-            ));
+                    "&7- ชนะ/รอด = รับรางวัล 3 ชิ้น"));
 
             gui.setItem(31, createItem(Material.ARROW, "&c<- กลับ", "&7กลับไปหน้าเลือกภาษา"));
         }
@@ -211,7 +201,8 @@ public class NoesisInfoGUI implements Listener {
         ItemStack item = new ItemStack(mat);
         ItemMeta meta = item.getItemMeta();
         meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
-        List<String> loreList = Arrays.asList(lore).stream().map(l -> ChatColor.translateAlternateColorCodes('&', l)).toList();
+        List<String> loreList = Arrays.asList(lore).stream().map(l -> ChatColor.translateAlternateColorCodes('&', l))
+                .toList();
         meta.setLore(loreList);
         item.setItemMeta(meta);
         return item;
@@ -220,24 +211,32 @@ public class NoesisInfoGUI implements Listener {
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         String title = ChatColor.stripColor(event.getView().getTitle());
-        if (title == null) return;
-        if (!title.contains("Select Language") && !title.contains("Noesis SMP") && !title.contains("เลือกภาษา") && !title.contains("คู่มือ")) return;
+        if (title == null)
+            return;
+        if (!title.contains("Select Language") && !title.contains("Noesis SMP") && !title.contains("เลือกภาษา")
+                && !title.contains("คู่มือ"))
+            return;
         event.setCancelled(true);
-        if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.AIR) return;
+        if (event.getCurrentItem() == null || event.getCurrentItem().getType() == Material.AIR)
+            return;
         Player player = (Player) event.getWhoClicked();
         Material clicked = event.getCurrentItem().getType();
         if (title.contains("Select Language") || title.contains("เลือกภาษา")) {
-            if (clicked == Material.WRITTEN_BOOK) openInfoMenu(player, false);
-            else if (clicked == Material.BOOK) openInfoMenu(player, true);
+            if (clicked == Material.WRITTEN_BOOK)
+                openInfoMenu(player, false);
+            else if (clicked == Material.BOOK)
+                openInfoMenu(player, true);
         } else {
-            if (clicked == Material.ARROW) openLanguageMenu(player);
+            if (clicked == Material.ARROW)
+                openLanguageMenu(player);
         }
     }
 
     @EventHandler
     public void onInventoryDrag(InventoryDragEvent event) {
         String title = ChatColor.stripColor(event.getView().getTitle());
-        if (title != null && (title.contains("Select Language") || title.contains("Noesis SMP") || title.contains("เลือกภาษา") || title.contains("คู่มือ"))) {
+        if (title != null && (title.contains("Select Language") || title.contains("Noesis SMP")
+                || title.contains("เลือกภาษา") || title.contains("คู่มือ"))) {
             event.setCancelled(true);
         }
     }
