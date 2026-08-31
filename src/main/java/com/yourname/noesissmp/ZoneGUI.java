@@ -44,9 +44,9 @@ public class ZoneGUI implements Listener {
         for(int i = 0; i < 45; i++) inv.setItem(i, glass);
 
         // 🔴 TIER 3 (Top Row)
-        inv.setItem(11, createNode(Material.GHAST_TEAR, "&f&lLIGHT: Tier 3",
+        inv.setItem(11, createNode(Material.GHAST_TEAR, t3.equals("light"), "&f&lLIGHT: Tier 3",
                 "&7Cost: &615 Triumph Stars", "", "&f▶ Combo Debuff & DMG Boost:", "&7Hit an enemy 3 times to reduce", "&7their SPD & increase your DMG by +3%", "&7(Max 5 Stacks / 15% Boost).", "", getStatusText("light", t3, !t2.equals("none"))));
-        inv.setItem(15, createNode(Material.TNT, "&c&lHEAVY: Tier 3",
+        inv.setItem(15, createNode(Material.TNT, t3.equals("heavy"), "&c&lHEAVY: Tier 3",
                 "&7Cost: &615 Triumph Stars", "", "&c▶ Shockwave Finisher (30s CD):", "&7At 5 Combo Stacks, your next hit", "&7slams nearby enemies down, applying", "&7Slowness 4 (1s) & Slowness 2 (5s),", "&7and seals them in a 10-block domain.", "", getStatusText("heavy", t3, !t2.equals("none"))));
 
         // 🔴 TIER 2 (Middle Row)
@@ -54,6 +54,7 @@ public class ZoneGUI implements Listener {
         boolean isInverted = handMode.equals("invert");
         inv.setItem(19, createNode(
                 isInverted ? Material.AMETHYST_SHARD : Material.PRISMARINE_SHARD,
+                isInverted,
                 isInverted ? "&e&lHand Mode: &bInvert Mode" : "&e&lHand Mode: &aNormal Mode",
                 "&7Current: " + (isInverted ? "&bInvert (Left-Handed)" : "&aNormal (Right-Handed)"),
                 "",
@@ -64,19 +65,19 @@ public class ZoneGUI implements Listener {
                 "&e▶ Click to Toggle"
         ));
 
-        inv.setItem(20, createNode(Material.PHANTOM_MEMBRANE, "&f&lLIGHT: Tier 2",
-                "&7Cost: &610 Triumph Stars", "", "&f▶ Afterimage:", "&7Crits have 10% chance to create", "&7an afterimage with 360° sweep slash,", "&7dealing 1.5x DMG & Speed 4.", "", getStatusText("light", t2, !t1.equals("none"))));
-        inv.setItem(24, createNode(Material.IRON_AXE, "&c&lHEAVY: Tier 2",
+        inv.setItem(20, createNode(Material.PHANTOM_MEMBRANE, t2.equals("light"), "&f&lLIGHT: Tier 2",
+                "&7Cost: &610 Triumph Stars", "", "&f▶ Afterimage (20s CD):", "&7Press Offhand [F] with a Sword in Zone", "&7to summon a running afterimage storm,", "&7shredding enemy armor durability continuously (1.5s),", "&7and granting Invisibility (2s) & Speed (1.5s).", "", getStatusText("light", t2, !t1.equals("none"))));
+        inv.setItem(24, createNode(Material.IRON_AXE, t2.equals("heavy"), "&c&lHEAVY: Tier 2",
                 "&7Cost: &610 Triumph Stars", "", "&c▶ Combo Stack:", "&7Removes ANY attack speed buffs.", "&7Successive charged hits grant", "&7+10% DMG & -3% ATK Speed", "&7(Max 5 Stacks / +50% DMG, -15% SPD).", "&7Missing a swing removes 1 stack.", "", getStatusText("heavy", t2, !t1.equals("none"))));
 
         // 🔴 TIER 1 (Bottom Row - Core Passive)
-        inv.setItem(29, createNode(Material.FEATHER, "&f&lLIGHT: Tier 1 (Core)",
+        inv.setItem(29, createNode(Material.FEATHER, t1.equals("light"), "&f&lLIGHT: Tier 1 (Core)",
                 "&7Cost: &65 Triumph Stars", "", "&f▶ Passive (Always Active):", "&7+15% ATK Speed. Crits grant", "&7Invisibility & Speed 2 (2s).", "", "&f▶ Perfect Dodge:", "&735% chance to teleport behind attacker", "&7and blind/slow them.", "", getStatusText("light", t1, true)));
-        inv.setItem(33, createNode(Material.ANVIL, "&c&lHEAVY: Tier 1 (Core)",
+        inv.setItem(33, createNode(Material.ANVIL, t1.equals("heavy"), "&c&lHEAVY: Tier 1 (Core)",
                 "&7Cost: &65 Triumph Stars", "", "&c▶ Passive (Always Active):", "&7+50% DMG, -10% ATK Speed.", "&7Permanent Slowness 1.", "", "&c▶ Shield Parry:", "&7Blocking any attack with a shield", "&7stuns and weakens the attacker.", "", getStatusText("heavy", t1, true)));
 
         // 🔴 ปุ่ม Reset
-        inv.setItem(40, createNode(Material.BARRIER, "&4&lRESET SKILL TREE", "&7Reset all nodes and start over.", "&c(Triumph Stars will NOT be refunded!)", "", "&e▶ Click to Reset"));
+        inv.setItem(40, createNode(Material.BARRIER, false, "&4&lRESET SKILL TREE", "&7Reset all nodes and start over.", "&c(Triumph Stars will NOT be refunded!)", "", "&e▶ Click to Reset"));
 
         p.openInventory(inv);
         p.playSound(p.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 1f, 1f);
@@ -89,11 +90,21 @@ public class ZoneGUI implements Listener {
         return ChatColor.YELLOW + "▶ Click to Unlock & Select";
     }
 
-    private ItemStack createNode(Material mat, String name, String... lore) {
-        ItemStack item = new ItemStack(mat); ItemMeta meta = item.getItemMeta();
+    private ItemStack createNode(Material mat, boolean isSelected, String name, String... lore) {
+        ItemStack item = new ItemStack(mat);
+        ItemMeta meta = item.getItemMeta();
         meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
         List<String> loreList = Arrays.asList(lore).stream().map(l -> ChatColor.translateAlternateColorCodes('&', l)).toList();
-        meta.setLore(loreList); item.setItemMeta(meta); return item;
+        meta.setLore(loreList);
+        if (isSelected) {
+            meta.addEnchant(org.bukkit.enchantments.Enchantment.UNBREAKING, 1, true);
+            meta.addItemFlags(org.bukkit.inventory.ItemFlag.HIDE_ENCHANTS);
+            try {
+                meta.setEnchantmentGlintOverride(true);
+            } catch (Throwable ignored) {}
+        }
+        item.setItemMeta(meta);
+        return item;
     }
 
     @EventHandler

@@ -101,8 +101,9 @@ public class NoesisInfoGUI implements Listener {
                     "&7- Put ores in 3x3 grid (Leftovers are returned).",
                     "",
                     "&a▶ Exchange Rates (per 1 Star):",
-                    "&7- &6Copper 9&7 | &eGold 4&7 | &fIron 2",
-                    "&7- &aEmerald 2&7 | &bDiamond 1&7 | &8Netherite 1 &a(Yields 5 Stars)"
+                    "&7- &b7x Diamond Block &7➔ &61 Star",
+                    "&7- &82x Netherite Ingot &7➔ &61 Star",
+                    "&e- Limit: Max 10 Stars per Altar Open."
             ));
 
             gui.setItem(16, createItem(Material.WITHER_SKELETON_SKULL, "&9&l6. Event System (/event)",
@@ -182,8 +183,9 @@ public class NoesisInfoGUI implements Listener {
                     "&7- โยนแร่ผสมกันใน 3x3 ตรงกลาง (แร่เศษๆจะเด้งคืนให้)",
                     "",
                     "&a▶ อัตราแลกเปลี่ยน (ต่อ 1 ดาว):",
-                    "&7- &6ทองแดง 9&7 | &eทอง 4&7 | &fเหล็ก 2",
-                    "&7- &aมรกต 2&7 | &bเพชร 1&7 | &8เนเธอร์ไรต์ 1 &a(ได้ 5 ดาว)"
+                    "&7- &bบล็อกเพชร 7 บล็อก &7➔ &61 ดาว",
+                    "&7- &8เนเธอร์ไรต์ 2 แท่ง &7➔ &61 ดาว",
+                    "&e- จำกัด: สูงสุด 10 ดาว ต่อรอบแท่นเปิด"
             ));
 
             gui.setItem(16, createItem(Material.WITHER_SKELETON_SKULL, "&9&l6. ระบบกิจกรรม (/event)",

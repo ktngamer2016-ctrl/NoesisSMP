@@ -27,6 +27,8 @@ public class AltarGUI implements Listener {
 
     private final NoesisSMP plugin;
     public static final String TITLE = ChatColor.DARK_RED + "☠ " + ChatColor.GOLD + "Altar of Triumph" + ChatColor.DARK_RED + " ☠";
+    public static final int MAX_STARS_PER_SESSION = 10;
+    private final java.util.Map<java.util.UUID, Integer> sessionCrafted = new HashMap<>();
 
     private final int[] glassSlots = {0, 2, 6, 7, 8, 9, 10, 11, 15, 17, 18, 20, 24, 25, 26};
     private final int[] gridSlots = {3, 4, 5, 12, 13, 14, 21, 22, 23};
@@ -36,6 +38,10 @@ public class AltarGUI implements Listener {
 
     public AltarGUI(NoesisSMP plugin) {
         this.plugin = plugin;
+    }
+
+    public void resetSession() {
+        sessionCrafted.clear();
     }
 
     public void openGUI(Player p) {
@@ -49,6 +55,9 @@ public class AltarGUI implements Listener {
             inv.setItem(slot, glass);
         }
 
+        int crafted = sessionCrafted.getOrDefault(p.getUniqueId(), 0);
+        int remainingLimit = Math.max(0, MAX_STARS_PER_SESSION - crafted);
+
         ItemStack btn = new ItemStack(Material.NETHER_STAR);
         ItemMeta bm = btn.getItemMeta();
         bm.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + "✦ FORGE TRIUMPH STAR ✦");
@@ -60,12 +69,12 @@ public class AltarGUI implements Listener {
                 ChatColor.GRAY + "- 1x Netherite Ingot (Bottom Slot)",
                 "",
                 ChatColor.AQUA + "【 Exchange Rates 】",
-                ChatColor.GOLD + "- 9x Copper Ingot " + ChatColor.WHITE + "➔ 1 Star",
-                ChatColor.YELLOW + "- 4x Gold Ingot " + ChatColor.WHITE + "➔ 1 Star",
-                ChatColor.WHITE + "- 2x Iron Ingot " + ChatColor.WHITE + "➔ 1 Star",
-                ChatColor.GREEN + "- 2x Emerald " + ChatColor.WHITE + "➔ 1 Star",
-                ChatColor.AQUA + "- 1x Diamond " + ChatColor.WHITE + "➔ 1 Star",
-                ChatColor.DARK_GRAY + "- 1x Netherite Ingot " + ChatColor.WHITE + "➔ 5 Stars",
+                ChatColor.AQUA + "- 7x Diamond Block " + ChatColor.WHITE + "➔ 1 Star",
+                ChatColor.DARK_GRAY + "- 2x Netherite Ingot " + ChatColor.WHITE + "➔ 1 Star",
+                "",
+                ChatColor.LIGHT_PURPLE + "【 Session Limit 】",
+                ChatColor.GRAY + "- Traded This Open: " + (crafted >= MAX_STARS_PER_SESSION ? ChatColor.RED : ChatColor.YELLOW) + crafted + "/" + MAX_STARS_PER_SESSION + " Stars",
+                ChatColor.GRAY + "- Remaining: " + (remainingLimit == 0 ? ChatColor.RED + "0 (LIMIT REACHED)" : ChatColor.GREEN + "" + remainingLimit + " Stars"),
                 "",
                 ChatColor.GREEN + "Click to forge all valid materials!"
         ));
@@ -113,54 +122,62 @@ public class AltarGUI implements Listener {
             return;
         }
 
-        int copper = 0, iron = 0, gold = 0, emerald = 0, diamond = 0, netheriteGrid = 0;
+        int crafted = sessionCrafted.getOrDefault(p.getUniqueId(), 0);
+        int remainingAllowance = MAX_STARS_PER_SESSION - crafted;
+
+        int diamondBlocks = 0, netheriteIngots = 0;
         List<ItemStack> invalidItems = new ArrayList<>();
 
         for (int slot : gridSlots) {
             ItemStack item = inv.getItem(slot);
             if (item != null) {
-                if (item.getType() == Material.COPPER_INGOT) copper += item.getAmount();
-                else if (item.getType() == Material.IRON_INGOT) iron += item.getAmount();
-                else if (item.getType() == Material.GOLD_INGOT) gold += item.getAmount();
-                else if (item.getType() == Material.EMERALD) emerald += item.getAmount();
-                else if (item.getType() == Material.DIAMOND) diamond += item.getAmount();
-                else if (item.getType() == Material.NETHERITE_INGOT) netheriteGrid += item.getAmount();
+                if (item.getType() == Material.DIAMOND_BLOCK) diamondBlocks += item.getAmount();
+                else if (item.getType() == Material.NETHERITE_INGOT) netheriteIngots += item.getAmount();
                 else invalidItems.add(item.clone());
 
                 inv.setItem(slot, null);
             }
         }
 
-        int copperStars = copper / 9;
-        int ironStars = iron / 2;
-        int goldStars = gold / 4;
-        int emeraldStars = emerald / 2;
-        int diamondStars = diamond;
-        int netheriteStars = netheriteGrid * 5;
-
-        int totalStars = copperStars + ironStars + goldStars + emeraldStars + diamondStars + netheriteStars;
-
-        int copperRem = copper % 9;
-        int ironRem = iron % 2;
-        int goldRem = gold % 4;
-        int emeraldRem = emerald % 2;
-
-        if (totalStars == 0) {
-            p.sendMessage(plugin.PREFIX + ChatColor.RED + "Not enough valid materials in the 3x3 grid!");
+        if (remainingAllowance <= 0) {
+            p.sendMessage(plugin.PREFIX + ChatColor.RED + "You have reached the limit of " + MAX_STARS_PER_SESSION + " stars for this Altar session!");
             p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
 
-            if (copper > 0) inv.addItem(new ItemStack(Material.COPPER_INGOT, copper));
-            if (iron > 0) inv.addItem(new ItemStack(Material.IRON_INGOT, iron));
-            if (gold > 0) inv.addItem(new ItemStack(Material.GOLD_INGOT, gold));
-            if (emerald > 0) inv.addItem(new ItemStack(Material.EMERALD, emerald));
-            if (diamond > 0) inv.addItem(new ItemStack(Material.DIAMOND, diamond));
-            if (netheriteGrid > 0) inv.addItem(new ItemStack(Material.NETHERITE_INGOT, netheriteGrid));
+            if (diamondBlocks > 0) inv.addItem(new ItemStack(Material.DIAMOND_BLOCK, diamondBlocks));
+            if (netheriteIngots > 0) inv.addItem(new ItemStack(Material.NETHERITE_INGOT, netheriteIngots));
             for (ItemStack invalid : invalidItems) inv.addItem(invalid);
             return;
         }
 
+        int possibleDiamondStars = diamondBlocks / 7;
+        int possibleNetheriteStars = netheriteIngots / 2;
+        int totalPossible = possibleDiamondStars + possibleNetheriteStars;
+
+        if (totalPossible == 0) {
+            p.sendMessage(plugin.PREFIX + ChatColor.RED + "Not enough valid materials in the 3x3 grid!");
+            p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+
+            if (diamondBlocks > 0) inv.addItem(new ItemStack(Material.DIAMOND_BLOCK, diamondBlocks));
+            if (netheriteIngots > 0) inv.addItem(new ItemStack(Material.NETHERITE_INGOT, netheriteIngots));
+            for (ItemStack invalid : invalidItems) inv.addItem(invalid);
+            return;
+        }
+
+        int actualDiamondStars = Math.min(possibleDiamondStars, remainingAllowance);
+        int remAllowanceAfterDiamond = remainingAllowance - actualDiamondStars;
+        int actualNetheriteStars = Math.min(possibleNetheriteStars, remAllowanceAfterDiamond);
+
+        int totalStars = actualDiamondStars + actualNetheriteStars;
+        int usedDiamondBlocks = actualDiamondStars * 7;
+        int usedNetheriteIngots = actualNetheriteStars * 2;
+
+        int refundDiamondBlocks = diamondBlocks - usedDiamondBlocks;
+        int refundNetheriteIngots = netheriteIngots - usedNetheriteIngots;
+
         top.setAmount(top.getAmount() - 1);
         bot.setAmount(bot.getAmount() - 1);
+
+        sessionCrafted.put(p.getUniqueId(), crafted + totalStars);
 
         for (int i = 0; i < totalStars; i++) {
             HashMap<Integer, ItemStack> left = p.getInventory().addItem(plugin.createStar("triumph"));
@@ -168,10 +185,8 @@ public class AltarGUI implements Listener {
         }
 
         List<ItemStack> itemsToReturn = new ArrayList<>(invalidItems);
-        if (copperRem > 0) itemsToReturn.add(new ItemStack(Material.COPPER_INGOT, copperRem));
-        if (ironRem > 0) itemsToReturn.add(new ItemStack(Material.IRON_INGOT, ironRem));
-        if (goldRem > 0) itemsToReturn.add(new ItemStack(Material.GOLD_INGOT, goldRem));
-        if (emeraldRem > 0) itemsToReturn.add(new ItemStack(Material.EMERALD, emeraldRem));
+        if (refundDiamondBlocks > 0) itemsToReturn.add(new ItemStack(Material.DIAMOND_BLOCK, refundDiamondBlocks));
+        if (refundNetheriteIngots > 0) itemsToReturn.add(new ItemStack(Material.NETHERITE_INGOT, refundNetheriteIngots));
 
         for (ItemStack returnItem : itemsToReturn) {
             HashMap<Integer, ItemStack> left = p.getInventory().addItem(returnItem);
@@ -179,10 +194,10 @@ public class AltarGUI implements Listener {
         }
 
         if (!itemsToReturn.isEmpty()) {
-            p.sendMessage(plugin.PREFIX + ChatColor.YELLOW + "Excess materials were returned to your inventory.");
+            p.sendMessage(plugin.PREFIX + ChatColor.YELLOW + "Excess/Unused materials were returned to your inventory.");
         }
 
-        p.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Altar activated! Forged " + ChatColor.GOLD + totalStars + "x Triumph Stars!");
+        p.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Altar activated! Forged " + ChatColor.GOLD + totalStars + "x Triumph Stars! " + ChatColor.GRAY + "(Session: " + ChatColor.YELLOW + (crafted + totalStars) + "/" + MAX_STARS_PER_SESSION + ChatColor.GRAY + ")");
 
         Location loc = new Location(Bukkit.getWorlds().get(0), 0, 80, 0);
         playEpicAltarEffect(loc);

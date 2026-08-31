@@ -94,8 +94,9 @@ public class NoesisListener implements Listener {
         }
 
         try {
-            if (player.getMaxHealth() < 20.0 && !plugin.getConfig().contains("players." + uuid + ".kills")) {
-                player.setMaxHealth(20.0); player.setHealth(20.0);
+            org.bukkit.attribute.AttributeInstance maxHealthAttr = player.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+            if (maxHealthAttr != null && maxHealthAttr.getValue() < 20.0 && !plugin.getConfig().contains("players." + uuid + ".kills")) {
+                maxHealthAttr.setBaseValue(20.0); player.setHealth(20.0);
             }
         } catch (Exception ignored) {}
 
@@ -264,12 +265,13 @@ public class NoesisListener implements Listener {
             }
 
             if (slot == 11) {
-                double currentHearts = player.getMaxHealth();
+                org.bukkit.attribute.AttributeInstance maxHealthAttr = player.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+                double currentHearts = maxHealthAttr != null ? maxHealthAttr.getValue() : 20.0;
                 if (currentHearts >= 40.0) {
                     player.sendMessage(plugin.PREFIX + ChatColor.RED + "Your hearts are already maxed out (20)! Pick Crit instead.");
                     giveStar(player, starType); player.closeInventory(); return;
                 }
-                player.setMaxHealth(currentHearts + 2.0);
+                if (maxHealthAttr != null) maxHealthAttr.setBaseValue(currentHearts + 2.0);
                 player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Consumed star for " + ChatColor.RED + "+1 Max Heart" + ChatColor.GREEN + "!");
                 player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
             } else {
@@ -289,7 +291,8 @@ public class NoesisListener implements Listener {
             player.closeInventory();
         } else if (slot == 20) {
             // Claim ALL for Hearts
-            double currentHearts = player.getMaxHealth();
+            org.bukkit.attribute.AttributeInstance maxHealthAttr = player.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+            double currentHearts = maxHealthAttr != null ? maxHealthAttr.getValue() : 20.0;
             int heartsNeeded = (int) Math.max(0, (40.0 - currentHearts) / 2.0);
             if (heartsNeeded <= 0) {
                 player.sendMessage(plugin.PREFIX + ChatColor.RED + "Your hearts are already maxed out (20)!");
@@ -304,7 +307,7 @@ public class NoesisListener implements Listener {
                 return;
             }
             int consumed = consumeAllStars(player, starType, toConsume);
-            player.setMaxHealth(currentHearts + (consumed * 2.0));
+            if (maxHealthAttr != null) maxHealthAttr.setBaseValue(currentHearts + (consumed * 2.0));
             player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Consumed " + consumed + " stars for " + ChatColor.RED + "+" + consumed + " Max Hearts" + ChatColor.GREEN + "!");
             plugin.saveConfig();
             player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);

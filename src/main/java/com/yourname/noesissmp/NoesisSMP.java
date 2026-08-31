@@ -14,6 +14,7 @@ import org.bukkit.boss.BossBar;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -25,8 +26,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.UUID;
 
-public final class NoesisSMP extends JavaPlugin implements TabCompleter {
+public final class NoesisSMP extends JavaPlugin {
 
     public final String PREFIX = ChatColor.DARK_GRAY + "[" + ChatColor.AQUA + "Noesis" + ChatColor.DARK_AQUA + "SMP" + ChatColor.DARK_GRAY + "] " + ChatColor.RESET;
     public NamespacedKey starTypeKey;
@@ -34,6 +36,7 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
     public NamespacedKey bossDropKey;
 
     private AdminGUI adminGUI;
+    public AdminStarGUI adminStarGUI;
     public EventManager eventManager;
     public NoesisPlayerGUI playerGUI;
     public AltarGUI altarGUI;
@@ -44,7 +47,6 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
     public long altarCloseTime = 0;
     public long altarCooldownTime = Long.MAX_VALUE;
 
-    // 🔴 ตัวแปรบาร์บอสสำหรับ Altar
     public BossBar altarBossBar;
 
     @Override
@@ -59,6 +61,7 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
         altarCooldownTime = getConfig().getLong("altar.cooldown_time", Long.MAX_VALUE);
 
         adminGUI = new AdminGUI(this);
+        this.adminStarGUI = new AdminStarGUI(this);
         this.eventManager = new EventManager(this);
         this.playerGUI = new NoesisPlayerGUI(this);
         this.altarGUI = new AltarGUI(this);
@@ -68,6 +71,7 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
         getServer().getPluginManager().registerEvents(new NoesisListener(this), this);
         getServer().getPluginManager().registerEvents(combatListener, this);
         getServer().getPluginManager().registerEvents(adminGUI, this);
+        getServer().getPluginManager().registerEvents(adminStarGUI, this);
         getServer().getPluginManager().registerEvents(new NoesisInfoGUI(this), this);
         getServer().getPluginManager().registerEvents(playerGUI, this);
         getServer().getPluginManager().registerEvents(altarGUI, this);
@@ -125,11 +129,13 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
                     getConfig().set("altar.is_open", true);
                     getConfig().set("altar.close_time", altarCloseTime);
                     saveConfig();
+                    if (altarGUI != null) altarGUI.resetSession();
 
                     Bukkit.broadcastMessage(PREFIX + ChatColor.GREEN + "✨ The Altar of Triumph is now OPEN at 0, 80, 0 for 30 minutes! ✨");
                     for (Player p : Bukkit.getOnlinePlayers()) {
                         p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
                     }
+                    CraftingEffectManager.playActivationEffect(NoesisSMP.this, altarLoc);
                 }
 
                 // 🔴 อัปเดตข้อความและสีของ BossBar
@@ -328,13 +334,74 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
         }
     }
 
+    public AdminGUI getAdminGUI() { return adminGUI; }
+    public AdminStarGUI getAdminStarGUI() { return adminStarGUI; }
+
+    public int countStarsInInventory(org.bukkit.inventory.Inventory inv, String type) {
+        if (inv == null) return 0;
+        int count = 0;
+        for (ItemStack item : inv.getContents()) {
+            if (item != null && item.getType() == Material.NETHER_STAR && item.hasItemMeta()) {
+                String t = item.getItemMeta().getPersistentDataContainer().get(starTypeKey, PersistentDataType.STRING);
+                if (t == null) {
+                    String dName = ChatColor.stripColor(item.getItemMeta().getDisplayName());
+                    if (dName != null && dName.contains("Triumph Star")) t = "triumph";
+                    else if (dName != null && dName.contains("Soul Star")) t = "soul";
+                }
+                if (type.equalsIgnoreCase(t)) {
+                    count += item.getAmount();
+                }
+            }
+        }
+        return count;
+    }
+
+    public int removeStarsFromInventory(org.bukkit.inventory.Inventory inv, String type, int amountToRemove) {
+        if (inv == null || amountToRemove <= 0) return 0;
+        int removed = 0;
+        for (int i = 0; i < inv.getSize() && removed < amountToRemove; i++) {
+            ItemStack item = inv.getItem(i);
+            if (item != null && item.getType() == Material.NETHER_STAR && item.hasItemMeta()) {
+                String t = item.getItemMeta().getPersistentDataContainer().get(starTypeKey, PersistentDataType.STRING);
+                if (t == null) {
+                    String dName = ChatColor.stripColor(item.getItemMeta().getDisplayName());
+                    if (dName != null && dName.contains("Triumph Star")) t = "triumph";
+                    else if (dName != null && dName.contains("Soul Star")) t = "soul";
+                }
+                if (type.equalsIgnoreCase(t)) {
+                    int toTake = Math.min(item.getAmount(), amountToRemove - removed);
+                    item.setAmount(item.getAmount() - toTake);
+                    if (item.getAmount() <= 0) inv.setItem(i, null);
+                    removed += toTake;
+                }
+            }
+        }
+        return removed;
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> completions = new ArrayList<>();
         if (command.getName().equalsIgnoreCase("noesis")) {
             if (args.length == 1) {
                 completions.addAll(Arrays.asList("gui", "zone", "claim", "deposit", "mode"));
-                if (sender.hasPermission("noesis.admin")) completions.addAll(Arrays.asList("admin", "wipe", "give", "gift", "dropmode", "altar", "maxcrit", "setcrit", "zoneenter", "zoneend", "blackflash", "skipstack", "setstack", "zonetree"));
+                if (sender.hasPermission("noesis.admin")) completions.addAll(Arrays.asList("admin", "stars", "starmanager", "wipe", "give", "gift", "dropmode", "altar", "maxcrit", "setcrit", "zoneenter", "zoneend", "blackflash", "skipstack", "setstack", "zonetree"));
+            }
+            else if (args.length == 2 && (args[0].equalsIgnoreCase("stars") || args[0].equalsIgnoreCase("starmanager")) && sender.hasPermission("noesis.admin")) {
+                completions.addAll(Arrays.asList("check", "give", "take", "set"));
+                for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
+            }
+            else if (args.length == 3 && (args[0].equalsIgnoreCase("stars") || args[0].equalsIgnoreCase("starmanager")) && sender.hasPermission("noesis.admin")) {
+                for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
+            }
+            else if (args.length == 4 && (args[0].equalsIgnoreCase("stars") || args[0].equalsIgnoreCase("starmanager")) && sender.hasPermission("noesis.admin")) {
+                completions.addAll(Arrays.asList("triumph", "soul"));
+            }
+            else if (args.length == 5 && (args[0].equalsIgnoreCase("stars") || args[0].equalsIgnoreCase("starmanager")) && sender.hasPermission("noesis.admin")) {
+                completions.addAll(Arrays.asList("1", "5", "10", "64"));
+            }
+            else if (args.length == 6 && (args[0].equalsIgnoreCase("stars") || args[0].equalsIgnoreCase("starmanager")) && sender.hasPermission("noesis.admin")) {
+                completions.addAll(Arrays.asList("cloud", "inv", "ec"));
             }
             else if (args.length == 2 && (args[0].equalsIgnoreCase("maxcrit") || args[0].equalsIgnoreCase("zoneenter") || args[0].equalsIgnoreCase("zoneend") || args[0].equalsIgnoreCase("blackflash")) && sender.hasPermission("noesis.admin")) {
                 for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
@@ -501,9 +568,12 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
                     getConfig().set("altar.close_time", altarCloseTime);
                     getConfig().set("altar.cooldown_time", altarCooldownTime);
                     saveConfig();
+                    if (altarGUI != null) altarGUI.resetSession();
 
                     Bukkit.broadcastMessage(PREFIX + ChatColor.GREEN + "✨ An Admin has FORCE OPENED the Altar of Triumph for 30 minutes! ✨");
                     for (Player p : Bukkit.getOnlinePlayers()) p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
+                    Location altarLoc = new Location(Bukkit.getWorlds().get(0), 0, 80, 0);
+                    CraftingEffectManager.playActivationEffect(this, altarLoc);
                 }
                 else if (sub.equals("stop")) {
                     altarOpen = false;
@@ -603,6 +673,136 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
             }
 
             if (action.equals("admin")) { adminGUI.openGUI(player); return true; }
+
+            if (action.equals("stars") || action.equals("starmanager")) {
+                if (args.length == 1) {
+                    adminStarGUI.openPlayerSelector(player);
+                    return true;
+                }
+
+                String sub = args[1].toLowerCase();
+
+                // /noesis stars check <player>
+                if (sub.equals("check")) {
+                    if (args.length < 3) {
+                        player.sendMessage(PREFIX + ChatColor.RED + "Usage: /noesis stars check <player>");
+                        return true;
+                    }
+                    OfflinePlayer target = Bukkit.getOfflinePlayer(args[2]);
+                    UUID tId = target.getUniqueId();
+                    int st = getConfig().getInt("players." + tId + ".stored_triumph", 0);
+                    int ss = getConfig().getInt("players." + tId + ".stored_soul", 0);
+
+                    player.sendMessage(PREFIX + ChatColor.GOLD + "=== Star Overview for " + ChatColor.YELLOW + (target.getName() != null ? target.getName() : args[2]) + ChatColor.GOLD + " ===");
+                    player.sendMessage(ChatColor.GRAY + "Status: " + (target.isOnline() ? ChatColor.GREEN + "Online" : ChatColor.RED + "Offline"));
+                    player.sendMessage(ChatColor.YELLOW + "Cloud Storage: " + ChatColor.GOLD + st + "x Triumph" + ChatColor.GRAY + " | " + ChatColor.DARK_RED + ss + "x Soul");
+                    if (target.isOnline() && target.getPlayer() != null) {
+                        Player pTarget = target.getPlayer();
+                        int invT = countStarsInInventory(pTarget.getInventory(), "triumph");
+                        int invS = countStarsInInventory(pTarget.getInventory(), "soul");
+                        int ecT = countStarsInInventory(pTarget.getEnderChest(), "triumph");
+                        int ecS = countStarsInInventory(pTarget.getEnderChest(), "soul");
+                        player.sendMessage(ChatColor.YELLOW + "Inventory: " + ChatColor.GOLD + invT + "x Triumph" + ChatColor.GRAY + " | " + ChatColor.DARK_RED + invS + "x Soul");
+                        player.sendMessage(ChatColor.YELLOW + "Ender Chest: " + ChatColor.GOLD + ecT + "x Triumph" + ChatColor.GRAY + " | " + ChatColor.DARK_RED + ecS + "x Soul");
+                    }
+                    return true;
+                }
+
+                // /noesis stars give/put/add <player> <triumph|soul> <amount> [cloud|inv|ec]
+                if (sub.equals("give") || sub.equals("put") || sub.equals("add")) {
+                    if (args.length < 5) {
+                        player.sendMessage(PREFIX + ChatColor.RED + "Usage: /noesis stars give <player> <triumph|soul> <amount> [cloud|inv|ec]");
+                        return true;
+                    }
+                    OfflinePlayer target = Bukkit.getOfflinePlayer(args[2]);
+                    String type = args[3].toLowerCase();
+                    int amt;
+                    try { amt = Integer.parseInt(args[4]); } catch (NumberFormatException e) { player.sendMessage(PREFIX + ChatColor.RED + "Invalid amount."); return true; }
+                    String where = (args.length >= 6) ? args[5].toLowerCase() : "cloud";
+
+                    if (where.equals("inv") || where.equals("ec")) {
+                        if (!target.isOnline() || target.getPlayer() == null) {
+                            player.sendMessage(PREFIX + ChatColor.RED + "Target player must be online for direct inventory/EC delivery.");
+                            return true;
+                        }
+                        giveRewardDirect(target.getPlayer(), type, amt, where.equals("inv") ? "inv" : "ec");
+                        player.sendMessage(PREFIX + ChatColor.GREEN + "Gave " + amt + "x " + type + " stars to " + target.getName() + "'s " + where.toUpperCase() + ".");
+                    } else {
+                        String path = "players." + target.getUniqueId() + ".stored_" + type;
+                        getConfig().set(path, getConfig().getInt(path, 0) + amt);
+                        saveConfig();
+                        player.sendMessage(PREFIX + ChatColor.GREEN + "Added " + amt + "x " + type + " stars to " + (target.getName() != null ? target.getName() : args[2]) + "'s Cloud Storage.");
+                        if (target.isOnline() && target.getPlayer() != null) {
+                            target.getPlayer().sendMessage(PREFIX + ChatColor.AQUA + "Admin added " + amt + "x " + type + " stars to your Cloud Storage.");
+                        }
+                    }
+                    return true;
+                }
+
+                // /noesis stars take/pull/remove <player> <triumph|soul> <amount> [cloud|inv|ec]
+                if (sub.equals("take") || sub.equals("pull") || sub.equals("remove")) {
+                    if (args.length < 5) {
+                        player.sendMessage(PREFIX + ChatColor.RED + "Usage: /noesis stars take <player> <triumph|soul> <amount> [cloud|inv|ec]");
+                        return true;
+                    }
+                    OfflinePlayer target = Bukkit.getOfflinePlayer(args[2]);
+                    String type = args[3].toLowerCase();
+                    int amt;
+                    try { amt = Integer.parseInt(args[4]); } catch (NumberFormatException e) { player.sendMessage(PREFIX + ChatColor.RED + "Invalid amount."); return true; }
+                    String where = (args.length >= 6) ? args[5].toLowerCase() : "cloud";
+
+                    if (where.equals("inv")) {
+                        if (!target.isOnline() || target.getPlayer() == null) {
+                            player.sendMessage(PREFIX + ChatColor.RED + "Target player must be online to take from inventory.");
+                            return true;
+                        }
+                        int removed = removeStarsFromInventory(target.getPlayer().getInventory(), type, amt);
+                        player.sendMessage(PREFIX + ChatColor.YELLOW + "Pulled " + removed + "x " + type + " stars from " + target.getName() + "'s inventory.");
+                        target.getPlayer().sendMessage(PREFIX + ChatColor.RED + "Admin pulled " + removed + "x " + type + " stars from your inventory.");
+                    } else if (where.equals("ec")) {
+                        if (!target.isOnline() || target.getPlayer() == null) {
+                            player.sendMessage(PREFIX + ChatColor.RED + "Target player must be online to take from Ender Chest.");
+                            return true;
+                        }
+                        int removed = removeStarsFromInventory(target.getPlayer().getEnderChest(), type, amt);
+                        player.sendMessage(PREFIX + ChatColor.YELLOW + "Pulled " + removed + "x " + type + " stars from " + target.getName() + "'s Ender Chest.");
+                        target.getPlayer().sendMessage(PREFIX + ChatColor.RED + "Admin pulled " + removed + "x " + type + " stars from your Ender Chest.");
+                    } else {
+                        String path = "players." + target.getUniqueId() + ".stored_" + type;
+                        int current = getConfig().getInt(path, 0);
+                        int updated = Math.max(0, current - amt);
+                        getConfig().set(path, updated);
+                        saveConfig();
+                        player.sendMessage(PREFIX + ChatColor.YELLOW + "Removed " + (current - updated) + "x " + type + " stars from " + (target.getName() != null ? target.getName() : args[2]) + "'s Cloud.");
+                        if (target.isOnline() && target.getPlayer() != null) {
+                            target.getPlayer().sendMessage(PREFIX + ChatColor.RED + "Admin removed " + (current - updated) + "x " + type + " stars from your Cloud Storage.");
+                        }
+                    }
+                    return true;
+                }
+
+                // /noesis stars set <player> <triumph|soul> <amount>
+                if (sub.equals("set")) {
+                    if (args.length < 5) {
+                        player.sendMessage(PREFIX + ChatColor.RED + "Usage: /noesis stars set <player> <triumph|soul> <amount>");
+                        return true;
+                    }
+                    OfflinePlayer target = Bukkit.getOfflinePlayer(args[2]);
+                    String type = args[3].toLowerCase();
+                    int amt;
+                    try { amt = Integer.parseInt(args[4]); } catch (NumberFormatException e) { player.sendMessage(PREFIX + ChatColor.RED + "Invalid amount."); return true; }
+                    String path = "players." + target.getUniqueId() + ".stored_" + type;
+                    getConfig().set(path, Math.max(0, amt));
+                    saveConfig();
+                    player.sendMessage(PREFIX + ChatColor.GREEN + "Set " + (target.getName() != null ? target.getName() : args[2]) + "'s Cloud " + type + " stars to " + amt + ".");
+                    return true;
+                }
+
+                // Default: /noesis stars <player> -> open manager GUI for that player!
+                OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
+                adminStarGUI.openManager(player, target);
+                return true;
+            }
 
             if (action.equals("dropmode")) {
                 if (args.length < 2) { player.sendMessage(PREFIX + ChatColor.RED + "Usage: /noesis dropmode <true|false>"); return true; }
@@ -711,7 +911,8 @@ public final class NoesisSMP extends JavaPlugin implements TabCompleter {
                 Player target = (args.length >= 2) ? Bukkit.getPlayer(args[1]) : player;
                 if (target == null) { player.sendMessage(PREFIX + ChatColor.RED + "Player not found."); return true; }
                 if (combatListener != null) {
-                    combatListener.playBlackFlashVFX(target.getLocation().add(0, 1, 0));
+                    Location attackerLoc = (target != player) ? player.getLocation().add(0, 1.1, 0) : target.getLocation().add(0, 1.1, 0).subtract(target.getLocation().getDirection().multiply(3));
+                    combatListener.playBlackFlashVFX(target.getLocation().add(0, 1.1, 0), attackerLoc);
                     player.sendMessage(PREFIX + ChatColor.GREEN + "Played Black Flash VFX on " + target.getName() + ".");
                 }
                 return true;

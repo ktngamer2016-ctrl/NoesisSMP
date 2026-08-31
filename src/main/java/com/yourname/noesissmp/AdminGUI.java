@@ -32,6 +32,7 @@ public class AdminGUI implements Listener {
         ItemStack glass = createItem(Material.BLACK_STAINED_GLASS_PANE, " ");
         for (int i = 0; i < 36; i++) gui.setItem(i, glass);
 
+        gui.setItem(10, createItem(Material.NETHER_STAR, "&e&l[★] Player Star Manager", "&7Check, pull, or put stars", "&7in other players' storage/inventory.", "", "&e▶ Click to Manage Players"));
         gui.setItem(11, createItem(Material.GOLD_NUGGET, "&6&l[+] Triumph Star", "&7Spawn 1x Triumph Star", "", "&e▶ Click to receive"));
         gui.setItem(12, createItem(Material.REDSTONE, "&4&l[+] Soul Star", "&7Spawn 1x Soul Star", "", "&e▶ Click to receive"));
         gui.setItem(13, createItem(Material.ECHO_SHARD, "&5&l[+] Zacrozz's Fragment", "&7Spawn 1x Boss Drop", "&7(Used for Mace)", "", "&e▶ Click to receive"));
@@ -85,6 +86,9 @@ public class AdminGUI implements Listener {
         int slot = event.getSlot();
 
         switch (slot) {
+            case 10:
+                plugin.getAdminStarGUI().openPlayerSelector(player);
+                break;
             case 11:
                 HashMap<Integer, ItemStack> left1 = player.getInventory().addItem(plugin.createStar("triumph"));
                 for (ItemStack i : left1.values()) player.getWorld().dropItemNaturally(player.getLocation(), i);
