@@ -26,10 +26,9 @@ public class AltarGUI implements Listener {
     public static final int MAX_STARS_PER_SESSION = 10;
     private final java.util.Map<java.util.UUID, Integer> sessionCrafted = new HashMap<>();
 
-    private final int[] glassSlots = {0, 2, 6, 7, 8, 9, 10, 11, 15, 17, 18, 20, 24, 25, 26};
+    private final int[] glassSlots = {0, 1, 2, 6, 7, 8, 9, 11, 15, 17, 18, 19, 20, 24, 25, 26};
     private final int[] gridSlots = {3, 4, 5, 12, 13, 14, 21, 22, 23};
-    private final int TOP_CATALYST = 1;
-    private final int BOT_CATALYST = 19;
+    private final int CATALYST_SLOT = 10;
     private final int RESULT_SLOT = 16;
 
     public AltarGUI(NoesisSMP plugin) {
@@ -64,8 +63,7 @@ public class AltarGUI implements Listener {
                 ChatColor.GRAY + "Fill the 3x3 grid to accumulate points.",
                 "",
                 ChatColor.RED + "【 Activation Cost 】",
-                ChatColor.GRAY + "- 1x Netherite Ingot (Top Slot)",
-                ChatColor.GRAY + "- 1x Netherite Ingot (Bottom Slot)",
+                ChatColor.GRAY + "- 1x Netherite Block (Catalyst Slot)",
                 "",
                 ChatColor.AQUA + "【 Exchange Rates 】",
                 ChatColor.AQUA + "- 7x Diamond Block " + ChatColor.WHITE + "➔ 1 Star",
@@ -111,12 +109,10 @@ public class AltarGUI implements Listener {
     }
 
     private void processCrafting(Player p, Inventory inv) {
-        ItemStack top = inv.getItem(TOP_CATALYST);
-        ItemStack bot = inv.getItem(BOT_CATALYST);
+        ItemStack catalyst = inv.getItem(CATALYST_SLOT);
 
-        if (top == null || top.getType() != Material.NETHERITE_INGOT ||
-                bot == null || bot.getType() != Material.NETHERITE_INGOT) {
-            p.sendMessage(plugin.PREFIX + ChatColor.RED + "You must place Netherite Ingots in the top and bottom slots to activate the Altar!");
+        if (catalyst == null || catalyst.getType() != Material.NETHERITE_BLOCK) {
+            p.sendMessage(plugin.PREFIX + ChatColor.RED + "You must place a Netherite Block in the catalyst slot to activate the Altar!");
             p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
             return;
         }
@@ -173,8 +169,7 @@ public class AltarGUI implements Listener {
         int refundDiamondBlocks = diamondBlocks - usedDiamondBlocks;
         int refundNetheriteIngots = netheriteIngots - usedNetheriteIngots;
 
-        top.setAmount(top.getAmount() - 1);
-        bot.setAmount(bot.getAmount() - 1);
+        catalyst.setAmount(catalyst.getAmount() - 1);
 
         sessionCrafted.put(p.getUniqueId(), crafted + totalStars);
 
@@ -212,7 +207,7 @@ public class AltarGUI implements Listener {
         if (!ChatColor.stripColor(e.getView().getTitle()).equals("☠ Altar of Triumph ☠")) return;
         Player p = (Player) e.getPlayer();
 
-        int[] returnSlots = {TOP_CATALYST, BOT_CATALYST, 3, 4, 5, 12, 13, 14, 21, 22, 23};
+        int[] returnSlots = {CATALYST_SLOT, 3, 4, 5, 12, 13, 14, 21, 22, 23};
 
         for (int slot : returnSlots) {
             ItemStack item = e.getInventory().getItem(slot);

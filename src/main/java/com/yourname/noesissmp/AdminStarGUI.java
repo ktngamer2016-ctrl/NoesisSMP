@@ -3,8 +3,10 @@ package com.yourname.noesissmp;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.Sound;
+import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -14,60 +16,256 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
+import org.bukkit.persistence.PersistentDataType;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public class AdminStarGUI implements Listener {
 
     private final NoesisSMP plugin;
     public static final String TITLE_PREFIX = ChatColor.DARK_RED + "★ Star Manager: ";
-    public static final String SELECTOR_TITLE = ChatColor.DARK_GRAY + "⚙ " + ChatColor.GOLD + "Select Player to Manage";
+    public static final String SELECTOR_TITLE_PREFIX = ChatColor.DARK_GRAY + "⚙ " + ChatColor.GOLD + "Select Player";
 
     private final Map<UUID, UUID> adminTarget = new HashMap<>();
+    private final Map<UUID, Integer> adminSelectorPage = new HashMap<>();
+    private final Map<UUID, PlayerSortMode> adminSortMode = new HashMap<>();
+    private final NamespacedKey targetUuidKey;
+
+    public enum PlayerSortMode {
+        DEFAULT("Default (Online First)"),
+        OVERFLOW_DESC("Highest Overflow (⭐ ▼)"),
+        OVERFLOW_ASC("Lowest Overflow (⭐ ▲)"),
+        KILLS_DESC("Highest Kills (⚔ ▼)"),
+        KILLS_ASC("Lowest Kills (⚔ ▲)"),
+        TOTAL_POINTS_DESC("Highest Total Points (🔮 ▼)"),
+        TRIUMPH_DESC("Highest Triumph Stars (★ ▼)"),
+        SOUL_DESC("Highest Soul Stars (✦ ▼)"),
+        NAME_ASC("Name (A-Z)");
+
+        private final String displayName;
+
+        PlayerSortMode(String displayName) {
+            this.displayName = displayName;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        public PlayerSortMode next() {
+            PlayerSortMode[] values = values();
+            return values[(this.ordinal() + 1) % values.length];
+        }
+
+        public PlayerSortMode prev() {
+            PlayerSortMode[] values = values();
+            return values[(this.ordinal() - 1 + values.length) % values.length];
+        }
+    }
+
+    private static final int[] HEAD_SLOTS = {
+            10, 11, 12, 13, 14, 15, 16,
+            19, 20, 21, 22, 23, 24, 25,
+            28, 29, 30, 31, 32, 33, 34,
+            37, 38, 39, 40, 41, 42, 43
+    };
 
     public AdminStarGUI(NoesisSMP plugin) {
         this.plugin = plugin;
+        this.targetUuidKey = new NamespacedKey(plugin, "target_player_uuid");
     }
 
     /**
-     * Open player selector GUI for admin to choose who to manage.
+     * Open player selector GUI for admin to choose who to manage (supports Online & Offline players + Sorting + Pagination).
      */
     public void openPlayerSelector(Player admin) {
-        Inventory inv = Bukkit.createInventory(null, 54, SELECTOR_TITLE);
+        openPlayerSelector(admin, 0);
+    }
+
+    public void openPlayerSelector(Player admin, int page) {
+        // Collect all players: Online first, then offline
+        List<OfflinePlayer> allPlayers = new ArrayList<>();
+        Set<UUID> added = new HashSet<>();
+
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            allPlayers.add(online);
+            added.add(online.getUniqueId());
+        }
+
+        for (OfflinePlayer offline : Bukkit.getOfflinePlayers()) {
+            if (offline != null && offline.getUniqueId() != null && !added.contains(offline.getUniqueId())) {
+                allPlayers.add(offline);
+                added.add(offline.getUniqueId());
+            }
+        }
+
+        // Also check config "players" section to catch any registered player data
+        if (plugin.getConfig().isConfigurationSection("players")) {
+            for (String key : plugin.getConfig().getConfigurationSection("players").getKeys(false)) {
+                try {
+                    UUID u = UUID.fromString(key);
+                    if (!added.contains(u)) {
+                        OfflinePlayer op = Bukkit.getOfflinePlayer(u);
+                        allPlayers.add(op);
+                        added.add(u);
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // Apply Sorting
+        PlayerSortMode sortMode = adminSortMode.getOrDefault(admin.getUniqueId(), PlayerSortMode.DEFAULT);
+        allPlayers.sort((a, b) -> {
+            UUID uA = a.getUniqueId();
+            UUID uB = b.getUniqueId();
+            String nameA = plugin.getPlayerName(a);
+            String nameB = plugin.getPlayerName(b);
+
+            int ofA = plugin.getConfig().getInt("players." + uA + ".overflow", 0);
+            int ofB = plugin.getConfig().getInt("players." + uB + ".overflow", 0);
+            int kA = plugin.getConfig().getInt("players." + uA + ".kills", 0);
+            int kB = plugin.getConfig().getInt("players." + uB + ".kills", 0);
+            int stA = plugin.getConfig().getInt("players." + uA + ".stored_triumph", 0);
+            int stB = plugin.getConfig().getInt("players." + uB + ".stored_triumph", 0);
+            int ssA = plugin.getConfig().getInt("players." + uA + ".stored_soul", 0);
+            int ssB = plugin.getConfig().getInt("players." + uB + ".stored_soul", 0);
+
+            switch (sortMode) {
+                case OVERFLOW_DESC:
+                    int cOfD = Integer.compare(ofB, ofA);
+                    return cOfD != 0 ? cOfD : nameA.compareToIgnoreCase(nameB);
+                case OVERFLOW_ASC:
+                    int cOfA = Integer.compare(ofA, ofB);
+                    return cOfA != 0 ? cOfA : nameA.compareToIgnoreCase(nameB);
+                case KILLS_DESC:
+                    int cKD = Integer.compare(kB, kA);
+                    return cKD != 0 ? cKD : nameA.compareToIgnoreCase(nameB);
+                case KILLS_ASC:
+                    int cKA = Integer.compare(kA, kB);
+                    return cKA != 0 ? cKA : nameA.compareToIgnoreCase(nameB);
+                case TOTAL_POINTS_DESC:
+                    int cTot = Integer.compare(kB + ofB, kA + ofA);
+                    return cTot != 0 ? cTot : nameA.compareToIgnoreCase(nameB);
+                case TRIUMPH_DESC:
+                    int cSt = Integer.compare(stB, stA);
+                    return cSt != 0 ? cSt : nameA.compareToIgnoreCase(nameB);
+                case SOUL_DESC:
+                    int cSs = Integer.compare(ssB, ssA);
+                    return cSs != 0 ? cSs : nameA.compareToIgnoreCase(nameB);
+                case NAME_ASC:
+                    return nameA.compareToIgnoreCase(nameB);
+                case DEFAULT:
+                default:
+                    if (a.isOnline() && !b.isOnline()) return -1;
+                    if (!a.isOnline() && b.isOnline()) return 1;
+                    return nameA.compareToIgnoreCase(nameB);
+            }
+        });
+
+        int maxPages = Math.max(1, (int) Math.ceil((double) allPlayers.size() / HEAD_SLOTS.length));
+        page = Math.max(0, Math.min(page, maxPages - 1));
+        adminSelectorPage.put(admin.getUniqueId(), page);
+
+        String title = SELECTOR_TITLE_PREFIX + " " + ChatColor.GRAY + "(" + (page + 1) + "/" + maxPages + ")";
+        Inventory inv = Bukkit.createInventory(null, 54, title);
 
         ItemStack glass = createItem(Material.BLACK_STAINED_GLASS_PANE, " ");
         for (int i = 0; i < 54; i++) inv.setItem(i, glass);
 
-        int slot = 10;
-        for (Player online : Bukkit.getOnlinePlayers()) {
-            if (slot >= 44) break;
-            if (slot % 9 == 8) slot += 2;
+        int startIndex = page * HEAD_SLOTS.length;
+        int endIndex = Math.min(startIndex + HEAD_SLOTS.length, allPlayers.size());
+
+        for (int i = startIndex; i < endIndex; i++) {
+            OfflinePlayer p = allPlayers.get(i);
+            int slot = HEAD_SLOTS[i - startIndex];
 
             ItemStack head = new ItemStack(Material.PLAYER_HEAD);
             SkullMeta sm = (SkullMeta) head.getItemMeta();
-            sm.setOwningPlayer(online);
-            sm.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + online.getName());
 
-            int st = plugin.getConfig().getInt("players." + online.getUniqueId() + ".stored_triumph", 0);
-            int ss = plugin.getConfig().getInt("players." + online.getUniqueId() + ".stored_soul", 0);
-            int invT = plugin.countStarsInInventory(online.getInventory(), "triumph");
-            int invS = plugin.countStarsInInventory(online.getInventory(), "soul");
+            // Safe skin attachment without triggering Mojang rate-limit HTTP 429
+            if (p.isOnline() && p.getPlayer() != null) {
+                sm.setOwningPlayer(p.getPlayer());
+            } else if (p.hasPlayedBefore()) {
+                try {
+                    sm.setOwningPlayer(p);
+                } catch (Throwable ignored) {}
+            }
 
-            sm.setLore(Arrays.asList(
-                    ChatColor.GRAY + "Cloud: " + ChatColor.GOLD + st + " Triumph" + ChatColor.GRAY + " | " + ChatColor.DARK_RED + ss + " Soul",
-                    ChatColor.GRAY + "Inventory: " + ChatColor.GOLD + invT + " Triumph" + ChatColor.GRAY + " | " + ChatColor.DARK_RED + invS + " Soul",
-                    "",
-                    ChatColor.YELLOW + "▶ Click to Manage Stars"
-            ));
+            UUID u = p.getUniqueId();
+            sm.getPersistentDataContainer().set(targetUuidKey, PersistentDataType.STRING, u.toString());
+
+            String pName = plugin.getPlayerName(p);
+            sm.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + pName);
+
+            int st = plugin.getConfig().getInt("players." + u + ".stored_triumph", 0);
+            int ss = plugin.getConfig().getInt("players." + u + ".stored_soul", 0);
+            int kills = plugin.getConfig().getInt("players." + u + ".kills", 0);
+            int overflow = plugin.getConfig().getInt("players." + u + ".overflow", 0);
+            int totalPts = kills + overflow;
+            double crit = Math.min(50.0, totalPts * 0.8);
+
+            Player online = p.isOnline() ? p.getPlayer() : null;
+            int hearts = (int) ((online != null && online.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null)
+                    ? online.getAttribute(Attribute.GENERIC_MAX_HEALTH).getBaseValue() / 2.0
+                    : plugin.getConfig().getDouble("players." + u + ".max_health", 20.0) / 2.0);
+
+            List<String> lore = new ArrayList<>();
+            lore.add(ChatColor.GRAY + "Status: " + (p.isOnline() ? ChatColor.GREEN + "Online" : ChatColor.RED + "Offline"));
+            lore.add(ChatColor.RED + "❤ Hearts: " + ChatColor.WHITE + hearts + "/20");
+            lore.add(ChatColor.DARK_RED + "⚔ Kill Stack: " + ChatColor.WHITE + kills + ChatColor.GRAY + " | " + ChatColor.GOLD + "⭐ Overflow: " + ChatColor.WHITE + overflow);
+            lore.add(ChatColor.AQUA + "🎯 Base Crit: " + ChatColor.WHITE + String.format(java.util.Locale.US, "%.1f", crit) + "%");
+            lore.add(ChatColor.YELLOW + "✦ Cloud Storage: " + ChatColor.GOLD + st + "x Triumph" + ChatColor.GRAY + " | " + ChatColor.DARK_RED + ss + "x Soul");
+            lore.add("");
+            lore.add(ChatColor.YELLOW + "▶ Click to Manage Stars & Profile");
+
+            sm.setLore(lore);
             head.setItemMeta(sm);
-            inv.setItem(slot++, head);
+            inv.setItem(slot, head);
         }
 
-        inv.setItem(49, createItem(Material.ARROW, "&c<- Back to Admin Panel", "&7Return to Admin GUI"));
+        // Navigation & Sorting Controls (Bottom Row)
+        if (page > 0) {
+            inv.setItem(45, createItem(Material.ARROW, "&e◀ Previous Page", "&7Page " + page + "/" + maxPages));
+        } else {
+            inv.setItem(45, createItem(Material.GRAY_DYE, "&8◀ Previous Page", "&7You are on the first page"));
+        }
+
+        // Sorting Button (Slot 47)
+        inv.setItem(47, createItem(Material.HOPPER, "&e&lSort Mode: &b" + sortMode.getDisplayName(),
+                "&7Current Order: &f" + sortMode.getDisplayName(),
+                "",
+                "&7Available Modes:",
+                "&8- Default (Online First)",
+                "&8- Highest / Lowest Overflow",
+                "&8- Highest / Lowest Kill Stack",
+                "&8- Highest Total Points",
+                "&8- Highest Triumph / Soul Stars",
+                "&8- Alphabetical (A-Z)",
+                "",
+                "&e▶ Left-Click: &7Next Sort Mode",
+                "&b▶ Right-Click: &7Previous Sort Mode"
+        ));
+
+        inv.setItem(49, createItem(Material.BARRIER, "&c<- Back to Admin Panel", "&7Return to Admin GUI"));
+
+        // Total Players Info (Slot 51)
+        inv.setItem(51, createItem(Material.BOOK, "&6&lServer Player Stats",
+                "&7Total Registered: &e" + allPlayers.size() + " players",
+                "&7Online Now: &a" + Bukkit.getOnlinePlayers().size() + " players"
+        ));
+
+        if (page < maxPages - 1) {
+            inv.setItem(53, createItem(Material.ARROW, "&eNext Page ▶", "&7Page " + (page + 2) + "/" + maxPages));
+        } else {
+            inv.setItem(53, createItem(Material.GRAY_DYE, "&8Next Page ▶", "&7You are on the last page"));
+        }
 
         admin.openInventory(inv);
         admin.playSound(admin.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.2f);
@@ -81,7 +279,8 @@ public class AdminStarGUI implements Listener {
         UUID targetId = target.getUniqueId();
         adminTarget.put(admin.getUniqueId(), targetId);
 
-        String title = TITLE_PREFIX + ChatColor.DARK_AQUA + (target.getName() != null ? target.getName() : targetId.toString().substring(0, 8));
+        String targetName = plugin.getPlayerName(target);
+        String title = TITLE_PREFIX + ChatColor.DARK_AQUA + targetName;
         if (title.length() > 32) title = title.substring(0, 32);
 
         Inventory inv = Bukkit.createInventory(null, 45, title);
@@ -93,18 +292,40 @@ public class AdminStarGUI implements Listener {
 
         int st = plugin.getConfig().getInt("players." + targetId + ".stored_triumph", 0);
         int ss = plugin.getConfig().getInt("players." + targetId + ".stored_soul", 0);
+        int kills = plugin.getConfig().getInt("players." + targetId + ".kills", 0);
+        int overflow = plugin.getConfig().getInt("players." + targetId + ".overflow", 0);
+        int totalPts = kills + overflow;
+        double crit = Math.min(50.0, totalPts * 0.8);
+
+        int hearts = (int) ((onlineTarget != null && onlineTarget.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null)
+                ? onlineTarget.getAttribute(Attribute.GENERIC_MAX_HEALTH).getBaseValue() / 2.0
+                : plugin.getConfig().getDouble("players." + targetId + ".max_health", 20.0) / 2.0);
+
         int invT = (onlineTarget != null) ? plugin.countStarsInInventory(onlineTarget.getInventory(), "triumph") : 0;
         int invS = (onlineTarget != null) ? plugin.countStarsInInventory(onlineTarget.getInventory(), "soul") : 0;
         int ecT = (onlineTarget != null) ? plugin.countStarsInInventory(onlineTarget.getEnderChest(), "triumph") : 0;
         int ecS = (onlineTarget != null) ? plugin.countStarsInInventory(onlineTarget.getEnderChest(), "soul") : 0;
 
-        // Player Head Overview (Slot 4)
+        // Player Head Overview with Kill Stack & Overflow (Slot 4)
         ItemStack head = new ItemStack(Material.PLAYER_HEAD);
         SkullMeta sm = (SkullMeta) head.getItemMeta();
-        sm.setOwningPlayer(target);
-        sm.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + (target.getName() != null ? target.getName() : "Player"));
+        if (target.isOnline() && target.getPlayer() != null) {
+            sm.setOwningPlayer(target.getPlayer());
+        } else if (target.hasPlayedBefore()) {
+            try {
+                sm.setOwningPlayer(target);
+            } catch (Throwable ignored) {}
+        }
+
+        sm.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + targetName);
         sm.setLore(Arrays.asList(
                 ChatColor.GRAY + "Status: " + (target.isOnline() ? ChatColor.GREEN + "Online" : ChatColor.RED + "Offline"),
+                "",
+                ChatColor.LIGHT_PURPLE + "✦ Combat & Profile Stats:",
+                ChatColor.RED + "  - Max Hearts: " + ChatColor.WHITE + hearts + "/20",
+                ChatColor.DARK_RED + "  - Kill Stack: " + ChatColor.WHITE + kills,
+                ChatColor.GOLD + "  - Overflow Points: " + ChatColor.WHITE + overflow + " pts",
+                ChatColor.AQUA + "  - Base Crit Chance: " + ChatColor.WHITE + String.format(java.util.Locale.US, "%.1f", crit) + "%",
                 "",
                 ChatColor.YELLOW + "✦ Cloud Storage:",
                 ChatColor.GRAY + "  - Triumph Stars: " + ChatColor.GOLD + st,
@@ -171,21 +392,51 @@ public class AdminStarGUI implements Listener {
         String title = ChatColor.stripColor(event.getView().getTitle());
         if (title == null) return;
 
-        if (title.equals("⚙ Select Player to Manage")) {
+        if (title.startsWith("⚙ Select Player")) {
             event.setCancelled(true);
             if (!(event.getWhoClicked() instanceof Player admin)) return;
             ItemStack clicked = event.getCurrentItem();
-            if (clicked == null || clicked.getType() == Material.BLACK_STAINED_GLASS_PANE) return;
+            if (clicked == null || clicked.getType() == Material.BLACK_STAINED_GLASS_PANE || clicked.getType() == Material.GRAY_DYE) return;
 
-            if (clicked.getType() == Material.ARROW) {
+            int page = adminSelectorPage.getOrDefault(admin.getUniqueId(), 0);
+            PlayerSortMode currentMode = adminSortMode.getOrDefault(admin.getUniqueId(), PlayerSortMode.DEFAULT);
+
+            // Back to Admin GUI
+            if (event.getSlot() == 49) {
                 plugin.getAdminGUI().openGUI(admin);
                 return;
             }
 
-            if (clicked.getType() == Material.PLAYER_HEAD && clicked.getItemMeta() instanceof SkullMeta sm) {
-                OfflinePlayer target = sm.getOwningPlayer();
-                if (target != null) {
-                    openManager(admin, target);
+            // Previous Page
+            if (event.getSlot() == 45 && clicked.getType() == Material.ARROW) {
+                openPlayerSelector(admin, page - 1);
+                return;
+            }
+
+            // Next Page
+            if (event.getSlot() == 53 && clicked.getType() == Material.ARROW) {
+                openPlayerSelector(admin, page + 1);
+                return;
+            }
+
+            // Sort Mode Button (Slot 47)
+            if (event.getSlot() == 47) {
+                PlayerSortMode nextMode = event.isRightClick() ? currentMode.prev() : currentMode.next();
+                adminSortMode.put(admin.getUniqueId(), nextMode);
+                admin.playSound(admin.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.4f);
+                openPlayerSelector(admin, 0); // Jump back to page 1 with updated order
+                return;
+            }
+
+            // Clicked Player Head via PersistentDataContainer
+            if (clicked.hasItemMeta()) {
+                String uuidStr = clicked.getItemMeta().getPersistentDataContainer().get(targetUuidKey, PersistentDataType.STRING);
+                if (uuidStr != null) {
+                    try {
+                        OfflinePlayer target = Bukkit.getOfflinePlayer(UUID.fromString(uuidStr));
+                        openManager(admin, target);
+                        return;
+                    } catch (Exception ignored) {}
                 }
             }
             return;
@@ -203,7 +454,7 @@ public class AdminStarGUI implements Listener {
         Player onlineTarget = target.isOnline() ? target.getPlayer() : null;
 
         int slot = event.getSlot();
-        String targetName = target.getName() != null ? target.getName() : "Player";
+        String targetName = plugin.getPlayerName(target);
 
         int currT = plugin.getConfig().getInt("players." + targetId + ".stored_triumph", 0);
         int currS = plugin.getConfig().getInt("players." + targetId + ".stored_soul", 0);
@@ -286,7 +537,8 @@ public class AdminStarGUI implements Listener {
                 break;
 
             case 36:
-                openPlayerSelector(admin);
+                int lastPage = adminSelectorPage.getOrDefault(admin.getUniqueId(), 0);
+                openPlayerSelector(admin, lastPage);
                 return;
         }
 
@@ -306,7 +558,7 @@ public class AdminStarGUI implements Listener {
     @EventHandler
     public void onInventoryDrag(InventoryDragEvent event) {
         String title = ChatColor.stripColor(event.getView().getTitle());
-        if (title != null && (title.startsWith("★ Star Manager:") || title.equals("⚙ Select Player to Manage"))) {
+        if (title != null && (title.startsWith("★ Star Manager:") || title.startsWith("⚙ Select Player"))) {
             event.setCancelled(true);
         }
     }

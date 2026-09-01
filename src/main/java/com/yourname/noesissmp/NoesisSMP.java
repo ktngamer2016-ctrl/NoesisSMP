@@ -1043,4 +1043,25 @@ public final class NoesisSMP extends JavaPlugin {
         getConfig().set("altar.used_players", new ArrayList<>(altarUsedPlayers));
         saveConfig();
     }
+
+    public String getPlayerName(UUID uuid) {
+        if (uuid == null) return "Unknown";
+        OfflinePlayer op = Bukkit.getOfflinePlayer(uuid);
+        if (op.getName() != null && !op.getName().isEmpty()) {
+            return op.getName();
+        }
+        String saved = getConfig().getString("players." + uuid + ".name");
+        if (saved != null && !saved.isEmpty()) {
+            return saved;
+        }
+        return uuid.toString().substring(0, 8);
+    }
+
+    public String getPlayerName(OfflinePlayer p) {
+        if (p == null) return "Unknown";
+        if (p.getName() != null && !p.getName().isEmpty()) {
+            return p.getName();
+        }
+        return getPlayerName(p.getUniqueId());
+    }
 }

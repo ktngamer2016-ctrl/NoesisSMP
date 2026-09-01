@@ -73,6 +73,10 @@ public class NoesisListener implements Listener {
         Player player = event.getPlayer();
         String uuid = player.getUniqueId().toString();
 
+        // Always cache latest player username in config
+        plugin.getConfig().set("players." + uuid + ".name", player.getName());
+        plugin.saveConfig();
+
         if (plugin.getConfig().getBoolean("players." + uuid + ".pending_heart_loss", false)) {
             plugin.getConfig().set("players." + uuid + ".pending_heart_loss", false);
             plugin.saveConfig();

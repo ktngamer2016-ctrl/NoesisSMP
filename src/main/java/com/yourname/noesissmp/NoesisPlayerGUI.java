@@ -4,6 +4,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -12,6 +13,7 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.SkullMeta;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -32,7 +34,30 @@ public class NoesisPlayerGUI implements Listener {
         int overflow = plugin.getConfig().getInt("players." + player.getUniqueId() + ".overflow", 0);
         int storedTriumph = plugin.getConfig().getInt("players." + player.getUniqueId() + ".stored_triumph", 0);
         int storedSoul = plugin.getConfig().getInt("players." + player.getUniqueId() + ".stored_soul", 0);
+        int kills = plugin.getConfig().getInt("players." + player.getUniqueId() + ".kills", 0);
         String mode = plugin.getConfig().getString("players." + player.getUniqueId() + ".reward_mode", "auto").toUpperCase();
+
+        int totalPts = kills + overflow;
+        double crit = Math.min(50.0, totalPts * 0.8);
+        int hearts = (int) (player.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null
+                ? player.getAttribute(Attribute.GENERIC_MAX_HEALTH).getBaseValue() / 2.0
+                : 20.0 / 2.0);
+
+        // Player Profile Overview (Slot 4)
+        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+        SkullMeta sm = (SkullMeta) head.getItemMeta();
+        sm.setOwningPlayer(player);
+        sm.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + player.getName() + "'s Profile");
+        sm.setLore(Arrays.asList(
+                ChatColor.RED + "❤ Max Hearts: " + ChatColor.WHITE + hearts + "/20",
+                ChatColor.DARK_RED + "⚔ Kill Stack: " + ChatColor.WHITE + kills,
+                ChatColor.GOLD + "⭐ Overflow Points: " + ChatColor.WHITE + overflow + " pts",
+                ChatColor.AQUA + "🎯 Base Crit Chance: " + ChatColor.WHITE + String.format(java.util.Locale.US, "%.1f", crit) + "%",
+                "",
+                ChatColor.YELLOW + "✦ Cloud Storage: " + ChatColor.GOLD + storedTriumph + "x Triumph" + ChatColor.GRAY + " | " + ChatColor.DARK_RED + storedSoul + "x Soul"
+        ));
+        head.setItemMeta(sm);
+        gui.setItem(4, head);
 
         // 1. Convert Overflow
         gui.setItem(10, createItem(Material.GOLD_NUGGET, "&6&lConvert Overflow",
