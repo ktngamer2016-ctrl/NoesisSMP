@@ -1,7 +1,8 @@
 name: NoesisSMP
 version: 1.0.1
 main: com.yourname.noesissmp.NoesisSMP
-api-version: 1.20
+api-version: '1.21'
+softdepend: [Essentials]
 
 commands:
   noesis:

@@ -20,7 +20,14 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -42,6 +49,9 @@ public final class NoesisSMP extends JavaPlugin {
     public ZoneGUI zoneGUI;
     public CombatListener combatListener;
 
+    private File dataFile;
+    private FileConfiguration data;
+
     public boolean altarOpen = false;
     public long altarCloseTime = 0;
     public long altarCooldownTime = Long.MAX_VALUE;
@@ -52,15 +62,18 @@ public final class NoesisSMP extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        updateConfigDefaults();
+        loadDataFile();
+        migrateLegacyData();
         starTypeKey = new NamespacedKey(this, "star_type");
         trueMaceKey = new NamespacedKey(this, "true_mace");
         bossDropKey = new NamespacedKey(this, "boss_drop");
 
-        altarOpen = getConfig().getBoolean("altar.is_open", false);
-        altarCloseTime = getConfig().getLong("altar.close_time", 0);
-        altarCooldownTime = getConfig().getLong("altar.cooldown_time", Long.MAX_VALUE);
+        altarOpen = data.getBoolean("altar-state.is_open", false);
+        altarCloseTime = data.getLong("altar-state.close_time", 0);
+        altarCooldownTime = data.getLong("altar-state.cooldown_time", Long.MAX_VALUE);
 
-        List<String> loadedUsed = getConfig().getStringList("altar.used_players");
+        List<String> loadedUsed = data.getStringList("altar-state.used_players");
         if (loadedUsed != null) {
             altarUsedPlayers.addAll(loadedUsed);
         }
@@ -88,7 +101,11 @@ public final class NoesisSMP extends JavaPlugin {
         if (getCommand("event") != null) getCommand("event").setTabCompleter(this);
         if (getCommand("zone") != null) getCommand("zone").setTabCompleter(this);
 
-        try { Bukkit.removeRecipe(NamespacedKey.minecraft("mace")); } catch (Exception ignored) {}
+        try {
+            Bukkit.removeRecipe(NamespacedKey.minecraft("mace"));
+        } catch (Exception exception) {
+            getLogger().warning("Could not remove the vanilla mace recipe: " + exception.getMessage());
+        }
 
         try {
             NamespacedKey customMaceKey = new NamespacedKey(this, "abyssal_mace");
@@ -98,12 +115,29 @@ public final class NoesisSMP extends JavaPlugin {
             maceRecipe.setIngredient('Z', new org.bukkit.inventory.RecipeChoice.ExactChoice(createBossDrop()));
             maceRecipe.setIngredient('B', Material.BREEZE_ROD);
             Bukkit.addRecipe(maceRecipe);
-        } catch (Exception ignored) {}
+        } catch (Exception exception) {
+            getLogger().log(java.util.logging.Level.SEVERE, "Could not register the Abyssal Mace recipe", exception);
+        }
+
+        try {
+            Bukkit.removeRecipe(NamespacedKey.minecraft("golden_apple"));
+            NamespacedKey easyGoldenAppleKey = new NamespacedKey(this, "easy_golden_apple");
+            Bukkit.removeRecipe(easyGoldenAppleKey);
+            org.bukkit.inventory.ShapedRecipe goldenAppleRecipe = new org.bukkit.inventory.ShapedRecipe(
+                    easyGoldenAppleKey, new ItemStack(Material.GOLDEN_APPLE));
+            goldenAppleRecipe.shape(" G ", "GAG", " G ");
+            goldenAppleRecipe.setIngredient('G', Material.GOLD_INGOT);
+            goldenAppleRecipe.setIngredient('A', Material.APPLE);
+            Bukkit.addRecipe(goldenAppleRecipe);
+        } catch (Exception exception) {
+            getLogger().log(java.util.logging.Level.SEVERE,
+                    "Could not register the easier Golden Apple recipe", exception);
+        }
 
         // 🔴 สร้าง BossBar สำหรับ Altar
         altarBossBar = Bukkit.createBossBar(ChatColor.DARK_RED + "☠ Altar of Triumph ☠", BarColor.RED, BarStyle.SOLID);
 
-        Location altarLoc = new Location(Bukkit.getWorlds().get(0), 0, 80, 0);
+        Location altarLoc = getAltarLocation();
 
         new BukkitRunnable() {
             @Override
@@ -113,12 +147,12 @@ public final class NoesisSMP extends JavaPlugin {
                 // 🔴 เช็คหมดเวลาเปิด (เริ่มติดคูลดาวน์ 48 ชม.)
                 if (altarOpen && now >= altarCloseTime) {
                     altarOpen = false;
-                    altarCooldownTime = now + (48L * 60 * 60 * 1000);
-                    getConfig().set("altar.is_open", false);
-                    getConfig().set("altar.cooldown_time", altarCooldownTime);
-                    saveConfig();
+                    altarCooldownTime = now + getAltarCooldownDurationMs();
+                    data.set("altar-state.is_open", false);
+                    data.set("altar-state.cooldown_time", altarCooldownTime);
+                    saveData();
 
-                    Bukkit.broadcastMessage(PREFIX + ChatColor.RED + "☠ The Altar of Triumph has closed and entered a 48-Hour cooldown! ☠");
+                    Bukkit.broadcastMessage(PREFIX + ChatColor.RED + "☠ The Altar of Triumph has closed and entered cooldown! ☠");
                     for (Player p : Bukkit.getOnlinePlayers()) {
                         p.playSound(p.getLocation(), Sound.ENTITY_WITHER_DEATH, 0.5f, 0.5f);
                         if (ChatColor.stripColor(p.getOpenInventory().getTitle()).equals("☠ Altar of Triumph ☠")) {
@@ -130,13 +164,14 @@ public final class NoesisSMP extends JavaPlugin {
                 // 🔴 เช็คหมดคูลดาวน์ (เปิดอัตโนมัติ 1 ชั่วโมง)
                 else if (!altarOpen && now >= altarCooldownTime) {
                     altarOpen = true;
-                    altarCloseTime = now + (1L * 60 * 60 * 1000);
-                    getConfig().set("altar.is_open", true);
-                    getConfig().set("altar.close_time", altarCloseTime);
-                    saveConfig();
+                    altarCloseTime = now + getAltarOpenDurationMs();
+                    data.set("altar-state.is_open", true);
+                    data.set("altar-state.close_time", altarCloseTime);
+                    saveData();
                     if (altarGUI != null) altarGUI.resetSession();
 
-                    Bukkit.broadcastMessage(PREFIX + ChatColor.GREEN + "✨ The Altar of Triumph is now OPEN at 0, 80, 0 for 1 Hour! ✨");
+                    Bukkit.broadcastMessage(PREFIX + ChatColor.GREEN + "✨ The Altar of Triumph is now OPEN at "
+                            + altarLoc.getBlockX() + ", " + altarLoc.getBlockY() + ", " + altarLoc.getBlockZ() + "! ✨");
                     for (Player p : Bukkit.getOnlinePlayers()) {
                         p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
                     }
@@ -150,7 +185,7 @@ public final class NoesisSMP extends JavaPlugin {
                     long s = (left % 60000) / 1000;
                     altarBossBar.setTitle(ChatColor.LIGHT_PURPLE + "✨ Altar of Triumph is OPEN ✨ " + ChatColor.WHITE + m + "m " + s + "s");
                     altarBossBar.setColor(BarColor.PURPLE);
-                    altarBossBar.setProgress(Math.max(0.0, Math.min(1.0, (double) left / (1L * 60 * 60 * 1000))));
+                    altarBossBar.setProgress(Math.max(0.0, Math.min(1.0, (double) left / getAltarOpenDurationMs())));
                 } else {
                     if (altarCooldownTime == Long.MAX_VALUE) {
                         altarBossBar.setTitle(ChatColor.DARK_RED + "☠ Altar of Triumph is DISABLED ☠");
@@ -163,13 +198,14 @@ public final class NoesisSMP extends JavaPlugin {
                         long s = (left % 60000) / 1000;
                         altarBossBar.setTitle(ChatColor.RED + "☠ Altar of Triumph on Cooldown ☠ " + ChatColor.WHITE + h + "h " + m + "m " + s + "s");
                         altarBossBar.setColor(BarColor.RED);
-                        altarBossBar.setProgress(Math.max(0.0, Math.min(1.0, (double) left / (48L * 60 * 60 * 1000))));
+                        altarBossBar.setProgress(Math.max(0.0, Math.min(1.0, (double) left / getAltarCooldownDurationMs())));
                     }
                 }
 
                 // 🔴 เช็คระยะผู้เล่น (100 บล็อก) เพื่อแสดง/ซ่อน BossBar
                 for (Player p : Bukkit.getOnlinePlayers()) {
-                    if (p.getWorld().getName().equals(altarLoc.getWorld().getName()) && p.getLocation().distanceSquared(altarLoc) <= 10000) { // 100 * 100 = 10,000
+                    double radius = Math.max(1.0, getConfig().getDouble("altar.bossbar-radius", 100.0));
+                    if (p.getWorld().equals(altarLoc.getWorld()) && p.getLocation().distanceSquared(altarLoc) <= radius * radius) {
                         if (!altarBossBar.getPlayers().contains(p)) {
                             altarBossBar.addPlayer(p);
                         }
@@ -180,7 +216,8 @@ public final class NoesisSMP extends JavaPlugin {
                     }
                 }
 
-                if (altarLoc.getBlock().getType() != Material.CRAFTING_TABLE) {
+                if (getConfig().getBoolean("altar.maintain-block", true)
+                        && altarLoc.getBlock().getType() != Material.CRAFTING_TABLE) {
                     altarLoc.getBlock().setType(Material.CRAFTING_TABLE);
                 }
 
@@ -197,6 +234,14 @@ public final class NoesisSMP extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        data.set("altar-state.is_open", altarOpen);
+        data.set("altar-state.close_time", altarCloseTime);
+        data.set("altar-state.cooldown_time", altarCooldownTime);
+        data.set("altar-state.used_players", new ArrayList<>(altarUsedPlayers));
+        saveData();
+        if (eventManager != null) {
+            eventManager.shutdown();
+        }
         if (altarBossBar != null) {
             altarBossBar.removeAll();
         }
@@ -206,13 +251,11 @@ public final class NoesisSMP extends JavaPlugin {
                 if (p != null) combatListener.revealPlayer(p);
             }
             for (Player p : Bukkit.getOnlinePlayers()) {
+                combatListener.clearBlackCritStun(p);
                 combatListener.endTheZone(p);
-                if (p.getAttribute(Attribute.GENERIC_ATTACK_SPEED) != null) {
-                    p.getAttribute(Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
-                }
-                if (p.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
-                    p.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
-                }
+                combatListener.removeAttributeModifier(p.getAttribute(Attribute.GENERIC_ATTACK_SPEED), combatListener.ZONE_ATK_SPEED_KEY);
+                combatListener.removeAttributeModifier(p.getAttribute(Attribute.GENERIC_ATTACK_SPEED), combatListener.LIGHT_DEBUFF_ATK_KEY);
+                combatListener.removeAttributeModifier(p.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED), combatListener.LIGHT_DEBUFF_SPD_KEY);
                 p.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
             }
         }
@@ -265,24 +308,87 @@ public final class NoesisSMP extends JavaPlugin {
         return star;
     }
 
+    private String normalizeNoesisItemId(String input) {
+        if (input == null) return null;
+        String id = input.toLowerCase(java.util.Locale.ROOT).replace('-', '_').replace(' ', '_');
+        return switch (id) {
+            case "triumph", "triumph_star", "triumphstar" -> "triumph";
+            case "soul", "soul_star", "soulstar" -> "soul";
+            case "fragment", "zacrozz_fragment", "zacrozzs_fragment", "boss_drop" -> "fragment";
+            case "mace", "abyssal_mace", "abyssalmace", "true_mace" -> "abyssal_mace";
+            case "all" -> "all";
+            default -> null;
+        };
+    }
+
+    private ItemStack createNoesisItem(String id) {
+        return switch (id) {
+            case "triumph" -> createStar("triumph");
+            case "soul" -> createStar("soul");
+            case "fragment" -> createBossDrop();
+            case "abyssal_mace" -> createTrueMace();
+            default -> null;
+        };
+    }
+
+    private String noesisItemName(String id) {
+        return switch (id) {
+            case "triumph" -> "Triumph Star";
+            case "soul" -> "Soul Star";
+            case "fragment" -> "Zacrozz's Fragment";
+            case "abyssal_mace" -> "Abyssal Mace";
+            default -> id;
+        };
+    }
+
+    private void givePhysicalNoesisItem(Player target, String id, int amount, String placement) {
+        ItemStack template = createNoesisItem(id);
+        if (template == null) return;
+
+        int remaining = amount;
+        while (remaining > 0) {
+            ItemStack stack = template.clone();
+            stack.setAmount(Math.min(remaining, stack.getMaxStackSize()));
+            remaining -= stack.getAmount();
+
+            HashMap<Integer, ItemStack> leftovers;
+            if (placement.equals("ec")) {
+                leftovers = target.getEnderChest().addItem(stack);
+            } else {
+                leftovers = target.getInventory().addItem(stack);
+                if (placement.equals("auto") && !leftovers.isEmpty()) {
+                    HashMap<Integer, ItemStack> enderLeftovers = new HashMap<>();
+                    for (ItemStack leftover : leftovers.values()) {
+                        enderLeftovers.putAll(target.getEnderChest().addItem(leftover));
+                    }
+                    leftovers = enderLeftovers;
+                }
+            }
+
+            for (ItemStack leftover : leftovers.values()) {
+                target.getWorld().dropItemNaturally(target.getLocation(), leftover);
+            }
+        }
+    }
+
     private void sendToCloud(Player p, String type, int amount, String alertMsg) {
         String path = "players." + p.getUniqueId() + ".stored_" + type.toLowerCase();
-        getConfig().set(path, getConfig().getInt(path, 0) + amount);
-        saveConfig();
-        if (getConfig().getBoolean("players." + p.getUniqueId() + ".alerts", true)) {
+        getData().set(path, getData().getInt(path, 0) + amount);
+        saveData();
+        if (getData().getBoolean("players." + p.getUniqueId() + ".alerts", true)) {
             String starName = (type.equals("triumph") ? ChatColor.GOLD + "Triumph" : ChatColor.DARK_RED + "Soul") + ChatColor.GRAY;
             p.sendMessage(PREFIX + ChatColor.AQUA + alertMsg + " (" + amount + "x " + starName + " Stars)");
         }
     }
 
     public void giveRewardSmart(Player p, String type, int amount) {
-        String mode = getConfig().getString("players." + p.getUniqueId() + ".reward_mode", "auto");
+        String mode = getData().getString("players." + p.getUniqueId() + ".reward_mode", "auto");
 
         if (mode.equals("sys")) { sendToCloud(p, type, amount, "Directly saved to Cloud via settings."); return; }
 
         ItemStack item = createStar(type); item.setAmount(amount);
         String starName = (type.equals("triumph") ? ChatColor.GOLD + "Triumph" : ChatColor.DARK_RED + "Soul") + ChatColor.GRAY;
-        boolean alertsEnabled = getConfig().getBoolean("players." + p.getUniqueId() + ".alerts", true);
+        boolean alertsEnabled = getData().getBoolean("players." + p.getUniqueId() + ".alerts", true);
 
         if (mode.equals("ec")) {
             HashMap<Integer, ItemStack> leftOverEc = p.getEnderChest().addItem(item);
@@ -332,7 +438,7 @@ public final class NoesisSMP extends JavaPlugin {
                 p.sendMessage(PREFIX + ChatColor.YELLOW + "Admin sent " + amount + "x " + starName + ChatColor.YELLOW + " to your Ender Chest.");
                 break;
             case "sys":
-                getConfig().set(path, getConfig().getInt(path, 0) + amount); saveConfig();
+                getData().set(path, getData().getInt(path, 0) + amount); saveData();
                 p.sendMessage(PREFIX + ChatColor.AQUA + "Admin sent " + amount + "x " + starName + ChatColor.AQUA + " to your Cloud Storage.");
                 break;
             default: giveRewardSmart(p, type, amount); break;
@@ -390,7 +496,7 @@ public final class NoesisSMP extends JavaPlugin {
         if (command.getName().equalsIgnoreCase("noesis")) {
             if (args.length == 1) {
                 completions.addAll(Arrays.asList("gui", "zone", "claim", "deposit", "mode"));
-                if (sender.hasPermission("noesis.admin")) completions.addAll(Arrays.asList("admin", "stars", "starmanager", "wipe", "give", "gift", "dropmode", "altar", "maxcrit", "setcrit", "zoneenter", "zoneend", "blackflash", "skipstack", "setstack", "zonetree"));
+                if (sender.hasPermission("noesis.admin")) completions.addAll(Arrays.asList("admin", "stars", "starmanager", "wipe", "give", "gift", "dropmode", "altar", "maxcrit", "setcrit", "zoneenter", "zoneend", "blackflash", "testblack", "skipstack", "setstack", "zonetree"));
             }
             else if (args.length == 2 && (args[0].equalsIgnoreCase("stars") || args[0].equalsIgnoreCase("starmanager")) && sender.hasPermission("noesis.admin")) {
                 completions.addAll(Arrays.asList("check", "give", "take", "set"));
@@ -409,6 +515,13 @@ public final class NoesisSMP extends JavaPlugin {
                 completions.addAll(Arrays.asList("cloud", "inv", "ec"));
             }
             else if (args.length == 2 && (args[0].equalsIgnoreCase("maxcrit") || args[0].equalsIgnoreCase("zoneenter") || args[0].equalsIgnoreCase("zoneend") || args[0].equalsIgnoreCase("blackflash")) && sender.hasPermission("noesis.admin")) {
+                for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
+            }
+            else if (args.length == 2 && (args[0].equalsIgnoreCase("testblack") || args[0].equalsIgnoreCase("testblackcrit")) && sender.hasPermission("noesis.admin")) {
+                completions.addAll(Arrays.asList("normal", "double"));
+                for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
+            }
+            else if (args.length == 3 && (args[0].equalsIgnoreCase("testblack") || args[0].equalsIgnoreCase("testblackcrit")) && sender.hasPermission("noesis.admin")) {
                 for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
             }
             else if (args.length == 2 && args[0].equalsIgnoreCase("zonetree") && sender.hasPermission("noesis.admin")) {
@@ -454,7 +567,7 @@ public final class NoesisSMP extends JavaPlugin {
                 for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
             }
             else if (args.length == 3 && args[0].equalsIgnoreCase("give") && sender.hasPermission("noesis.admin")) {
-                completions.addAll(Arrays.asList("triumph", "soul"));
+                completions.addAll(Arrays.asList("triumph", "soul", "fragment", "abyssal_mace", "all"));
             }
             else if (args.length == 4 && args[0].equalsIgnoreCase("give") && sender.hasPermission("noesis.admin")) {
                 completions.addAll(Arrays.asList("1", "5", "10", "64"));
@@ -509,9 +622,9 @@ public final class NoesisSMP extends JavaPlugin {
                 String path = args[0].toLowerCase();
                 try {
                     int lvl = Integer.parseInt(args[1]);
-                    getConfig().set("players." + uuid + ".zone_path", path);
-                    getConfig().set("players." + uuid + ".zone_level", lvl);
-                    saveConfig();
+                    getData().set("players." + uuid + ".zone_path", path);
+                    getData().set("players." + uuid + ".zone_level", lvl);
+                    saveData();
                     player.sendMessage(PREFIX + ChatColor.GREEN + "Admin forced your path to " + path.toUpperCase() + " Level " + lvl);
                     player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
                 } catch (Exception e) {
@@ -540,9 +653,9 @@ public final class NoesisSMP extends JavaPlugin {
                     String path = args[1].toLowerCase();
                     try {
                         int lvl = Integer.parseInt(args[2]);
-                        getConfig().set("players." + uuid + ".zone_path", path);
-                        getConfig().set("players." + uuid + ".zone_level", lvl);
-                        saveConfig();
+                        getData().set("players." + uuid + ".zone_path", path);
+                        getData().set("players." + uuid + ".zone_level", lvl);
+                        saveData();
                         player.sendMessage(PREFIX + ChatColor.GREEN + "Admin forced your path to " + path.toUpperCase() + " Level " + lvl);
                         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
                     } catch (Exception e) {
@@ -567,27 +680,27 @@ public final class NoesisSMP extends JavaPlugin {
 
                 if (sub.equals("start")) {
                     altarOpen = true;
-                    altarCloseTime = now + (1L * 60 * 60 * 1000);
-                    altarCooldownTime = altarCloseTime + (48L * 60 * 60 * 1000);
+                    altarCloseTime = now + getAltarOpenDurationMs();
+                    altarCooldownTime = altarCloseTime + getAltarCooldownDurationMs();
                     altarUsedPlayers.clear();
-                    getConfig().set("altar.is_open", true);
-                    getConfig().set("altar.close_time", altarCloseTime);
-                    getConfig().set("altar.cooldown_time", altarCooldownTime);
-                    getConfig().set("altar.used_players", new ArrayList<>());
-                    saveConfig();
+                    data.set("altar-state.is_open", true);
+                    data.set("altar-state.close_time", altarCloseTime);
+                    data.set("altar-state.cooldown_time", altarCooldownTime);
+                    data.set("altar-state.used_players", new ArrayList<>());
+                    saveData();
                     if (altarGUI != null) altarGUI.resetSession();
 
-                    Bukkit.broadcastMessage(PREFIX + ChatColor.GREEN + "✨ An Admin has FORCE OPENED the Altar of Triumph for 1 Hour! ✨");
+                    Bukkit.broadcastMessage(PREFIX + ChatColor.GREEN + "✨ An Admin has FORCE OPENED the Altar of Triumph! ✨");
                     for (Player p : Bukkit.getOnlinePlayers()) p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
-                    Location altarLoc = new Location(Bukkit.getWorlds().get(0), 0, 80, 0);
+                    Location altarLoc = getAltarLocation();
                     CraftingEffectManager.playActivationEffect(this, altarLoc);
                 }
                 else if (sub.equals("stop")) {
                     altarOpen = false;
                     altarCooldownTime = Long.MAX_VALUE;
-                    getConfig().set("altar.is_open", false);
-                    getConfig().set("altar.cooldown_time", altarCooldownTime);
-                    saveConfig();
+                    data.set("altar-state.is_open", false);
+                    data.set("altar-state.cooldown_time", altarCooldownTime);
+                    saveData();
 
                     Bukkit.broadcastMessage(PREFIX + ChatColor.RED + "☠ An Admin has FORCE CLOSED the Altar of Triumph! ☠");
                     for (Player p : Bukkit.getOnlinePlayers()) {
@@ -621,7 +734,7 @@ public final class NoesisSMP extends JavaPlugin {
                 if (args.length < 2) { player.sendMessage(PREFIX + ChatColor.YELLOW + "Usage: /noesis mode <auto|inv|ec|sys>"); return true; }
                 String mode = args[1].toLowerCase();
                 if (!Arrays.asList("auto", "inv", "ec", "sys").contains(mode)) { player.sendMessage(PREFIX + ChatColor.RED + "Invalid mode. Use: auto, inv, ec, or sys."); return true; }
-                getConfig().set("players." + uuid + ".reward_mode", mode); saveConfig();
+                getData().set("players." + uuid + ".reward_mode", mode); saveData();
                 player.sendMessage(PREFIX + ChatColor.GREEN + "Reward preference set to: " + ChatColor.YELLOW + mode.toUpperCase());
                 player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f); return true;
             }
@@ -642,16 +755,16 @@ public final class NoesisSMP extends JavaPlugin {
                     }
                 }
                 if (tCount == 0 && sCount == 0) { player.sendMessage(PREFIX + ChatColor.RED + "No stars found in your inventory to deposit."); return true; }
-                if (tCount > 0) getConfig().set("players." + uuid + ".stored_triumph", getConfig().getInt("players." + uuid + ".stored_triumph", 0) + tCount);
-                if (sCount > 0) getConfig().set("players." + uuid + ".stored_soul", getConfig().getInt("players." + uuid + ".stored_soul", 0) + sCount);
-                saveConfig();
+                if (tCount > 0) getData().set("players." + uuid + ".stored_triumph", getData().getInt("players." + uuid + ".stored_triumph", 0) + tCount);
+                if (sCount > 0) getData().set("players." + uuid + ".stored_soul", getData().getInt("players." + uuid + ".stored_soul", 0) + sCount);
+                saveData();
                 player.sendMessage(PREFIX + ChatColor.GREEN + "Deposited " + ChatColor.GOLD + tCount + " Triumph" + ChatColor.GREEN + " & " + ChatColor.DARK_RED + sCount + " Soul " + ChatColor.GREEN + "stars to Cloud.");
                 player.playSound(player.getLocation(), Sound.ENTITY_ENDER_EYE_DEATH, 1f, 1f); return true;
             }
 
             if (action.equals("claim")) {
-                int st = getConfig().getInt("players." + uuid + ".stored_triumph", 0);
-                int ss = getConfig().getInt("players." + uuid + ".stored_soul", 0);
+                int st = getData().getInt("players." + uuid + ".stored_triumph", 0);
+                int ss = getData().getInt("players." + uuid + ".stored_soul", 0);
 
                 if (st == 0 && ss == 0) { player.sendMessage(PREFIX + ChatColor.RED + "No stars stored in Cloud."); return true; }
 
@@ -665,9 +778,9 @@ public final class NoesisSMP extends JavaPlugin {
                     return true;
                 }
 
-                if (st > 0) getConfig().set("players." + uuid + ".stored_triumph", st - 1);
-                else getConfig().set("players." + uuid + ".stored_soul", ss - 1);
-                saveConfig();
+                if (st > 0) getData().set("players." + uuid + ".stored_triumph", st - 1);
+                else getData().set("players." + uuid + ".stored_soul", ss - 1);
+                saveData();
 
                 player.sendMessage(PREFIX + ChatColor.GREEN + "Claimed 1 star from cloud!");
                 player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 1f);
@@ -697,8 +810,8 @@ public final class NoesisSMP extends JavaPlugin {
                     }
                     OfflinePlayer target = Bukkit.getOfflinePlayer(args[2]);
                     UUID tId = target.getUniqueId();
-                    int st = getConfig().getInt("players." + tId + ".stored_triumph", 0);
-                    int ss = getConfig().getInt("players." + tId + ".stored_soul", 0);
+                    int st = getData().getInt("players." + tId + ".stored_triumph", 0);
+                    int ss = getData().getInt("players." + tId + ".stored_soul", 0);
 
                     player.sendMessage(PREFIX + ChatColor.GOLD + "=== Star Overview for " + ChatColor.YELLOW + (target.getName() != null ? target.getName() : args[2]) + ChatColor.GOLD + " ===");
                     player.sendMessage(ChatColor.GRAY + "Status: " + (target.isOnline() ? ChatColor.GREEN + "Online" : ChatColor.RED + "Offline"));
@@ -736,8 +849,8 @@ public final class NoesisSMP extends JavaPlugin {
                         player.sendMessage(PREFIX + ChatColor.GREEN + "Gave " + amt + "x " + type + " stars to " + target.getName() + "'s " + where.toUpperCase() + ".");
                     } else {
                         String path = "players." + target.getUniqueId() + ".stored_" + type;
-                        getConfig().set(path, getConfig().getInt(path, 0) + amt);
-                        saveConfig();
+                        getData().set(path, getData().getInt(path, 0) + amt);
+                        saveData();
                         player.sendMessage(PREFIX + ChatColor.GREEN + "Added " + amt + "x " + type + " stars to " + (target.getName() != null ? target.getName() : args[2]) + "'s Cloud Storage.");
                         if (target.isOnline() && target.getPlayer() != null) {
                             target.getPlayer().sendMessage(PREFIX + ChatColor.AQUA + "Admin added " + amt + "x " + type + " stars to your Cloud Storage.");
@@ -776,10 +889,10 @@ public final class NoesisSMP extends JavaPlugin {
                         target.getPlayer().sendMessage(PREFIX + ChatColor.RED + "Admin pulled " + removed + "x " + type + " stars from your Ender Chest.");
                     } else {
                         String path = "players." + target.getUniqueId() + ".stored_" + type;
-                        int current = getConfig().getInt(path, 0);
+                        int current = getData().getInt(path, 0);
                         int updated = Math.max(0, current - amt);
-                        getConfig().set(path, updated);
-                        saveConfig();
+                        getData().set(path, updated);
+                        saveData();
                         player.sendMessage(PREFIX + ChatColor.YELLOW + "Removed " + (current - updated) + "x " + type + " stars from " + (target.getName() != null ? target.getName() : args[2]) + "'s Cloud.");
                         if (target.isOnline() && target.getPlayer() != null) {
                             target.getPlayer().sendMessage(PREFIX + ChatColor.RED + "Admin removed " + (current - updated) + "x " + type + " stars from your Cloud Storage.");
@@ -799,8 +912,8 @@ public final class NoesisSMP extends JavaPlugin {
                     int amt;
                     try { amt = Integer.parseInt(args[4]); } catch (NumberFormatException e) { player.sendMessage(PREFIX + ChatColor.RED + "Invalid amount."); return true; }
                     String path = "players." + target.getUniqueId() + ".stored_" + type;
-                    getConfig().set(path, Math.max(0, amt));
-                    saveConfig();
+                    getData().set(path, Math.max(0, amt));
+                    saveData();
                     player.sendMessage(PREFIX + ChatColor.GREEN + "Set " + (target.getName() != null ? target.getName() : args[2]) + "'s Cloud " + type + " stars to " + amt + ".");
                     return true;
                 }
@@ -845,19 +958,57 @@ public final class NoesisSMP extends JavaPlugin {
                 if (args.length < 2) { player.sendMessage(PREFIX + ChatColor.RED + "Usage: /noesis wipe <player>"); return true; }
                 Player target = Bukkit.getPlayer(args[1]);
                 if (target == null) { player.sendMessage(PREFIX + ChatColor.RED + "Player not found."); return true; }
-                target.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(20.0); getConfig().set("players." + target.getUniqueId() + ".kills", 0);
-                getConfig().set("players." + target.getUniqueId() + ".overflow", 0); saveConfig(); player.sendMessage(PREFIX + ChatColor.GREEN + "Wiped stats for " + target.getName());
+                target.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(20.0); getData().set("players." + target.getUniqueId() + ".kills", 0);
+                getData().set("players." + target.getUniqueId() + ".overflow", 0); saveData(); player.sendMessage(PREFIX + ChatColor.GREEN + "Wiped stats for " + target.getName());
                 return true;
             }
 
             if (action.equals("give")) {
-                if (args.length < 4) { player.sendMessage(PREFIX + ChatColor.RED + "Usage: /noesis give <player> <triumph|soul> <amount> [inv|ec|sys]"); return true; }
+                if (args.length < 3) {
+                    player.sendMessage(PREFIX + ChatColor.RED + "Usage: /noesis give <player> <triumph|soul|fragment|abyssal_mace|all> [amount] [auto|inv|ec|sys]");
+                    return true;
+                }
                 Player target = Bukkit.getPlayer(args[1]);
                 if (target == null) { player.sendMessage(PREFIX + ChatColor.RED + "Player not found."); return true; }
+
+                String itemId = normalizeNoesisItemId(args[2]);
+                if (itemId == null) {
+                    player.sendMessage(PREFIX + ChatColor.RED + "Unknown item. Use triumph, soul, fragment, abyssal_mace, or all.");
+                    return true;
+                }
+
                 try {
-                    int amt = Integer.parseInt(args[3]);
-                    String placement = (args.length == 5) ? args[4] : "auto";
-                    giveRewardDirect(target, args[2], amt, placement);
+                    int amt = args.length >= 4 ? Integer.parseInt(args[3]) : 1;
+                    if (amt < 1 || amt > 6400) {
+                        player.sendMessage(PREFIX + ChatColor.RED + "Amount must be between 1 and 6400.");
+                        return true;
+                    }
+
+                    String placement = args.length >= 5 ? args[4].toLowerCase(java.util.Locale.ROOT) : "auto";
+                    if (placement.equals("cloud")) placement = "sys";
+                    if (!Arrays.asList("auto", "inv", "ec", "sys").contains(placement)) {
+                        player.sendMessage(PREFIX + ChatColor.RED + "Placement must be auto, inv, ec, or sys.");
+                        return true;
+                    }
+                    if (placement.equals("sys") && !(itemId.equals("triumph") || itemId.equals("soul"))) {
+                        player.sendMessage(PREFIX + ChatColor.RED + "Only Triumph and Soul Stars can be stored in Cloud Storage.");
+                        return true;
+                    }
+
+                    if (itemId.equals("all")) {
+                        for (String id : Arrays.asList("triumph", "soul", "fragment", "abyssal_mace")) {
+                            givePhysicalNoesisItem(target, id, amt, placement);
+                        }
+                        target.sendMessage(PREFIX + ChatColor.AQUA + "An admin gave you " + amt + " of every Noesis item.");
+                        player.sendMessage(PREFIX + ChatColor.GREEN + "Gave " + target.getName() + " " + amt + " of every Noesis item.");
+                    } else if (placement.equals("sys")) {
+                        giveRewardDirect(target, itemId, amt, "sys");
+                        player.sendMessage(PREFIX + ChatColor.GREEN + "Gave " + target.getName() + " " + amt + "x " + noesisItemName(itemId) + " in Cloud Storage.");
+                    } else {
+                        givePhysicalNoesisItem(target, itemId, amt, placement);
+                        target.sendMessage(PREFIX + ChatColor.AQUA + "An admin gave you " + amt + "x " + noesisItemName(itemId) + ".");
+                        player.sendMessage(PREFIX + ChatColor.GREEN + "Gave " + target.getName() + " " + amt + "x " + noesisItemName(itemId) + ".");
+                    }
                 } catch (NumberFormatException e) {
                     player.sendMessage(PREFIX + ChatColor.RED + "Invalid amount.");
                 }
@@ -868,8 +1019,8 @@ public final class NoesisSMP extends JavaPlugin {
                 Player target = (args.length >= 2) ? Bukkit.getPlayer(args[1]) : player;
                 if (target == null) { player.sendMessage(PREFIX + ChatColor.RED + "Player not found."); return true; }
                 String tUuid = target.getUniqueId().toString();
-                getConfig().set("players." + tUuid + ".kills", 100);
-                saveConfig();
+                getData().set("players." + tUuid + ".kills", 100);
+                saveData();
                 target.sendMessage(PREFIX + ChatColor.GOLD + "✨ Your Kill Stack has been MAXED to 100 by an Admin! (60% Crit Chance & VOID Tier Unlocked)");
                 target.playSound(target.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
                 if (target != player) player.sendMessage(PREFIX + ChatColor.GREEN + "Maxed Kill Stack for " + target.getName() + " (100 Kills).");
@@ -883,8 +1034,8 @@ public final class NoesisSMP extends JavaPlugin {
                 try {
                     int amount = Integer.parseInt(args[2]);
                     String tUuid = target.getUniqueId().toString();
-                    getConfig().set("players." + tUuid + ".kills", amount);
-                    saveConfig();
+                    getData().set("players." + tUuid + ".kills", amount);
+                    saveData();
                     target.sendMessage(PREFIX + ChatColor.GOLD + "✨ Your Kill Stack was set to " + amount + " by an Admin!");
                     target.playSound(target.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
                     player.sendMessage(PREFIX + ChatColor.GREEN + "Set Kill Stack for " + target.getName() + " to " + amount + ".");
@@ -921,6 +1072,26 @@ public final class NoesisSMP extends JavaPlugin {
                     Location attackerLoc = (target != player) ? player.getLocation().add(0, 1.1, 0) : target.getLocation().add(0, 1.1, 0).subtract(target.getLocation().getDirection().multiply(3));
                     combatListener.playBlackFlashVFX(target.getLocation().add(0, 1.1, 0), attackerLoc);
                     player.sendMessage(PREFIX + ChatColor.GREEN + "Played Black Flash VFX on " + target.getName() + ".");
+                }
+                return true;
+            }
+
+            if (action.equals("testblack") || action.equals("testblackcrit")) {
+                boolean doubleCrit = args.length >= 2 && args[1].equalsIgnoreCase("double");
+                int targetArgument = args.length >= 2
+                        && (args[1].equalsIgnoreCase("normal") || args[1].equalsIgnoreCase("double")) ? 2 : 1;
+                Player target = args.length > targetArgument ? Bukkit.getPlayer(args[targetArgument]) : player;
+                if (target == null) {
+                    player.sendMessage(PREFIX + ChatColor.RED + "Player not found. Usage: /noesis testblack <normal|double> [player]");
+                    return true;
+                }
+                if (combatListener != null) {
+                    combatListener.armBlackCritTest(target, doubleCrit);
+                    String mode = doubleCrit ? "DOUBLE / CINEMATIC" : "NORMAL";
+                    target.sendMessage(PREFIX + ChatColor.DARK_PURPLE + "Your next valid hit is armed for a " + ChatColor.LIGHT_PURPLE + mode + ChatColor.DARK_PURPLE + " Black Crit test.");
+                    if (target != player) {
+                        player.sendMessage(PREFIX + ChatColor.GREEN + "Armed " + target.getName() + " for a " + mode + " Black Crit test.");
+                    }
                 }
                 return true;
             }
@@ -988,7 +1159,7 @@ public final class NoesisSMP extends JavaPlugin {
                 return true;
             }
 
-            player.sendMessage(PREFIX + ChatColor.RED + "Unknown admin command. Use: admin, wipe, give, gift, dropmode, altar, zone, maxcrit, setcrit, zoneenter, zoneend, blackflash, skipstack, setstack, zonetree.");
+            player.sendMessage(PREFIX + ChatColor.RED + "Unknown admin command. Use: admin, wipe, give, gift, dropmode, altar, zone, maxcrit, setcrit, zoneenter, zoneend, blackflash, testblack, skipstack, setstack, zonetree.");
             return true;
         }
 
@@ -1007,16 +1178,16 @@ public final class NoesisSMP extends JavaPlugin {
 
         if (command.getName().equalsIgnoreCase("guide") || command.getName().equalsIgnoreCase("info")) { new NoesisInfoGUI(this).openLanguageMenu(player); return true; }
         if (command.getName().equalsIgnoreCase("ui")) {
-            boolean current = getConfig().getBoolean("players." + uuid + ".hud", true); getConfig().set("players." + uuid + ".hud", !current); saveConfig();
+            boolean current = getData().getBoolean("players." + uuid + ".hud", true); getData().set("players." + uuid + ".hud", !current); saveData();
             player.sendMessage(PREFIX + ChatColor.GRAY + "HUD " + (!current ? "Enabled." : "Disabled.")); return true;
         }
         if (command.getName().equalsIgnoreCase("alerts")) {
-            boolean current = getConfig().getBoolean("players." + uuid + ".alerts", true); getConfig().set("players." + uuid + ".alerts", !current); saveConfig();
+            boolean current = getData().getBoolean("players." + uuid + ".alerts", true); getData().set("players." + uuid + ".alerts", !current); saveData();
             player.sendMessage(PREFIX + ChatColor.GRAY + "Combat & System Alerts " + (!current ? "Enabled." : "Disabled.")); return true;
         }
         if (command.getName().equalsIgnoreCase("status")) {
             int h = (int) (player.getAttribute(Attribute.GENERIC_MAX_HEALTH).getBaseValue() / 2.0);
-            int k = getConfig().getInt("players." + uuid + ".kills", 0); int o = getConfig().getInt("players." + uuid + ".overflow", 0);
+            int k = getData().getInt("players." + uuid + ".kills", 0); int o = getData().getInt("players." + uuid + ".overflow", 0);
             int total = k + o; double crit = Math.min(50.0, total * 0.8);
 
             player.sendMessage(""); player.sendMessage(ChatColor.DARK_GRAY + "==========[ " + ChatColor.AQUA + ChatColor.BOLD + "NOESIS STATUS " + ChatColor.DARK_GRAY + "]==========");
@@ -1037,11 +1208,139 @@ public final class NoesisSMP extends JavaPlugin {
         return altarUsedPlayers.contains(p.getUniqueId().toString());
     }
 
+    public FileConfiguration getData() {
+        return data;
+    }
+
+    public void saveData() {
+        if (data == null || dataFile == null) return;
+        try {
+            data.save(dataFile);
+        } catch (IOException exception) {
+            getLogger().log(java.util.logging.Level.SEVERE, "Could not save data.yml", exception);
+        }
+    }
+
+    private void loadDataFile() {
+        dataFile = new File(getDataFolder(), "data.yml");
+        data = YamlConfiguration.loadConfiguration(dataFile);
+        if (!dataFile.exists()) {
+            data.options().header("Noesis SMP persistent runtime and player data. Edit config.yml for settings.");
+            saveData();
+        }
+    }
+
+    private void updateConfigDefaults() {
+        try (InputStreamReader reader = new InputStreamReader(
+                java.util.Objects.requireNonNull(getResource("config.yml")), StandardCharsets.UTF_8)) {
+            YamlConfiguration bundled = YamlConfiguration.loadConfiguration(reader);
+            boolean changed = false;
+            for (String path : bundled.getKeys(true)) {
+                if (bundled.isConfigurationSection(path) || getConfig().isSet(path)) continue;
+                getConfig().set(path, bundled.get(path));
+                changed = true;
+            }
+            if (changed) {
+                saveConfig();
+                getLogger().info("Added newly available settings to config.yml.");
+            }
+        } catch (IOException | NullPointerException exception) {
+            getLogger().log(java.util.logging.Level.SEVERE, "Could not update config.yml defaults", exception);
+        }
+    }
+
+    private void migrateLegacyData() {
+        boolean dataChanged = false;
+        boolean configChanged = false;
+        ConfigurationSection legacyPlayers = getConfig().getConfigurationSection("players");
+        if (legacyPlayers != null) {
+            for (java.util.Map.Entry<String, Object> entry : legacyPlayers.getValues(true).entrySet()) {
+                String destination = "players." + entry.getKey();
+                if (!data.contains(destination) && !(entry.getValue() instanceof ConfigurationSection)) {
+                    data.set(destination, entry.getValue());
+                    dataChanged = true;
+                }
+            }
+            getConfig().set("players", null);
+            configChanged = true;
+        }
+
+        String[] altarStateKeys = {"is_open", "close_time", "cooldown_time", "used_players"};
+        for (String key : altarStateKeys) {
+            String legacyPath = "altar." + key;
+            String destination = "altar-state." + key;
+            if (getConfig().contains(legacyPath)) {
+                if (!data.contains(destination)) data.set(destination, getConfig().get(legacyPath));
+                getConfig().set(legacyPath, null);
+                dataChanged = true;
+                configChanged = true;
+            }
+        }
+
+        if (dataChanged) saveData();
+        if (configChanged) saveConfig();
+        if (dataChanged || configChanged) {
+            getLogger().info("Migrated runtime and player records from config.yml to data.yml.");
+        }
+    }
+
+    public Location getAltarLocation() {
+        String configuredWorld = getConfig().getString("altar.world", "");
+        configuredWorld = configuredWorld == null ? "" : configuredWorld.trim();
+        org.bukkit.World world = configuredWorld.isEmpty() ? null : Bukkit.getWorld(configuredWorld);
+        if (world == null) {
+            if (!configuredWorld.isEmpty()) {
+                getLogger().warning("Configured altar world '" + configuredWorld + "' is not loaded; using the first loaded world.");
+            }
+            if (Bukkit.getWorlds().isEmpty()) {
+                throw new IllegalStateException("No worlds are loaded; cannot place the Altar of Triumph");
+            }
+            world = Bukkit.getWorlds().get(0);
+        }
+        return new Location(world,
+                getConfig().getInt("altar.x", 0),
+                getConfig().getInt("altar.y", 80),
+                getConfig().getInt("altar.z", 0));
+    }
+
+    public boolean isAltarLocation(Location location) {
+        if (location == null || location.getWorld() == null) return false;
+        Location altar = getAltarLocation();
+        return location.getWorld().equals(altar.getWorld())
+                && location.getBlockX() == altar.getBlockX()
+                && location.getBlockY() == altar.getBlockY()
+                && location.getBlockZ() == altar.getBlockZ();
+    }
+
+    public Location getEventSpawnLocation() {
+        String configuredWorld = getConfig().getString("events.world", "");
+        configuredWorld = configuredWorld == null ? "" : configuredWorld.trim();
+        org.bukkit.World world = configuredWorld.isEmpty() ? null : Bukkit.getWorld(configuredWorld);
+        if (world == null) {
+            if (!configuredWorld.isEmpty()) {
+                getLogger().warning("Configured event world '" + configuredWorld + "' is not loaded; using the first loaded world.");
+            }
+            if (Bukkit.getWorlds().isEmpty()) {
+                throw new IllegalStateException("No worlds are loaded; cannot start an event");
+            }
+            world = Bukkit.getWorlds().get(0);
+        }
+        return world.getSpawnLocation();
+    }
+
+    private long getAltarOpenDurationMs() {
+        return Math.max(1L, getConfig().getLong("altar.open-duration-minutes", 60L)) * 60_000L;
+    }
+
+    private long getAltarCooldownDurationMs() {
+        return Math.max(1L, getConfig().getLong("altar.cooldown-hours", 48L)) * 3_600_000L;
+    }
+
     public void recordAltarUsage(Player p) {
         if (p == null) return;
         altarUsedPlayers.add(p.getUniqueId().toString());
-        getConfig().set("altar.used_players", new ArrayList<>(altarUsedPlayers));
-        saveConfig();
+        data.set("altar-state.used_players", new ArrayList<>(altarUsedPlayers));
+        saveData();
     }
 
     public String getPlayerName(UUID uuid) {
@@ -1050,7 +1349,7 @@ public final class NoesisSMP extends JavaPlugin {
         if (op.getName() != null && !op.getName().isEmpty()) {
             return op.getName();
         }
-        String saved = getConfig().getString("players." + uuid + ".name");
+        String saved = getData().getString("players." + uuid + ".name");
         if (saved != null && !saved.isEmpty()) {
             return saved;
         }

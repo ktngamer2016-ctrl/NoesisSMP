@@ -106,9 +106,9 @@ public class AdminStarGUI implements Listener {
             }
         }
 
-        // Also check config "players" section to catch any registered player data
-        if (plugin.getConfig().isConfigurationSection("players")) {
-            for (String key : plugin.getConfig().getConfigurationSection("players").getKeys(false)) {
+        // Also check data.yml's "players" section to catch registered offline players.
+        if (plugin.getData().isConfigurationSection("players")) {
+            for (String key : plugin.getData().getConfigurationSection("players").getKeys(false)) {
                 try {
                     UUID u = UUID.fromString(key);
                     if (!added.contains(u)) {
@@ -128,14 +128,14 @@ public class AdminStarGUI implements Listener {
             String nameA = plugin.getPlayerName(a);
             String nameB = plugin.getPlayerName(b);
 
-            int ofA = plugin.getConfig().getInt("players." + uA + ".overflow", 0);
-            int ofB = plugin.getConfig().getInt("players." + uB + ".overflow", 0);
-            int kA = plugin.getConfig().getInt("players." + uA + ".kills", 0);
-            int kB = plugin.getConfig().getInt("players." + uB + ".kills", 0);
-            int stA = plugin.getConfig().getInt("players." + uA + ".stored_triumph", 0);
-            int stB = plugin.getConfig().getInt("players." + uB + ".stored_triumph", 0);
-            int ssA = plugin.getConfig().getInt("players." + uA + ".stored_soul", 0);
-            int ssB = plugin.getConfig().getInt("players." + uB + ".stored_soul", 0);
+            int ofA = plugin.getData().getInt("players." + uA + ".overflow", 0);
+            int ofB = plugin.getData().getInt("players." + uB + ".overflow", 0);
+            int kA = plugin.getData().getInt("players." + uA + ".kills", 0);
+            int kB = plugin.getData().getInt("players." + uB + ".kills", 0);
+            int stA = plugin.getData().getInt("players." + uA + ".stored_triumph", 0);
+            int stB = plugin.getData().getInt("players." + uB + ".stored_triumph", 0);
+            int ssA = plugin.getData().getInt("players." + uA + ".stored_soul", 0);
+            int ssB = plugin.getData().getInt("players." + uB + ".stored_soul", 0);
 
             switch (sortMode) {
                 case OVERFLOW_DESC:
@@ -204,17 +204,17 @@ public class AdminStarGUI implements Listener {
             String pName = plugin.getPlayerName(p);
             sm.setDisplayName(ChatColor.GOLD + "" + ChatColor.BOLD + pName);
 
-            int st = plugin.getConfig().getInt("players." + u + ".stored_triumph", 0);
-            int ss = plugin.getConfig().getInt("players." + u + ".stored_soul", 0);
-            int kills = plugin.getConfig().getInt("players." + u + ".kills", 0);
-            int overflow = plugin.getConfig().getInt("players." + u + ".overflow", 0);
+            int st = plugin.getData().getInt("players." + u + ".stored_triumph", 0);
+            int ss = plugin.getData().getInt("players." + u + ".stored_soul", 0);
+            int kills = plugin.getData().getInt("players." + u + ".kills", 0);
+            int overflow = plugin.getData().getInt("players." + u + ".overflow", 0);
             int totalPts = kills + overflow;
             double crit = Math.min(50.0, totalPts * 0.8);
 
             Player online = p.isOnline() ? p.getPlayer() : null;
             int hearts = (int) ((online != null && online.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null)
                     ? online.getAttribute(Attribute.GENERIC_MAX_HEALTH).getBaseValue() / 2.0
-                    : plugin.getConfig().getDouble("players." + u + ".max_health", 20.0) / 2.0);
+                    : plugin.getData().getDouble("players." + u + ".max_health", 20.0) / 2.0);
 
             List<String> lore = new ArrayList<>();
             lore.add(ChatColor.GRAY + "Status: " + (p.isOnline() ? ChatColor.GREEN + "Online" : ChatColor.RED + "Offline"));
@@ -290,16 +290,16 @@ public class AdminStarGUI implements Listener {
 
         Player onlineTarget = target.isOnline() ? target.getPlayer() : null;
 
-        int st = plugin.getConfig().getInt("players." + targetId + ".stored_triumph", 0);
-        int ss = plugin.getConfig().getInt("players." + targetId + ".stored_soul", 0);
-        int kills = plugin.getConfig().getInt("players." + targetId + ".kills", 0);
-        int overflow = plugin.getConfig().getInt("players." + targetId + ".overflow", 0);
+        int st = plugin.getData().getInt("players." + targetId + ".stored_triumph", 0);
+        int ss = plugin.getData().getInt("players." + targetId + ".stored_soul", 0);
+        int kills = plugin.getData().getInt("players." + targetId + ".kills", 0);
+        int overflow = plugin.getData().getInt("players." + targetId + ".overflow", 0);
         int totalPts = kills + overflow;
         double crit = Math.min(50.0, totalPts * 0.8);
 
         int hearts = (int) ((onlineTarget != null && onlineTarget.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null)
                 ? onlineTarget.getAttribute(Attribute.GENERIC_MAX_HEALTH).getBaseValue() / 2.0
-                : plugin.getConfig().getDouble("players." + targetId + ".max_health", 20.0) / 2.0);
+                : plugin.getData().getDouble("players." + targetId + ".max_health", 20.0) / 2.0);
 
         int invT = (onlineTarget != null) ? plugin.countStarsInInventory(onlineTarget.getInventory(), "triumph") : 0;
         int invS = (onlineTarget != null) ? plugin.countStarsInInventory(onlineTarget.getInventory(), "soul") : 0;
@@ -456,8 +456,8 @@ public class AdminStarGUI implements Listener {
         int slot = event.getSlot();
         String targetName = plugin.getPlayerName(target);
 
-        int currT = plugin.getConfig().getInt("players." + targetId + ".stored_triumph", 0);
-        int currS = plugin.getConfig().getInt("players." + targetId + ".stored_soul", 0);
+        int currT = plugin.getData().getInt("players." + targetId + ".stored_triumph", 0);
+        int currS = plugin.getData().getInt("players." + targetId + ".stored_soul", 0);
 
         switch (slot) {
             // Add Triumph to Cloud
@@ -530,9 +530,9 @@ public class AdminStarGUI implements Listener {
 
             // Clear all Cloud Stars
             case 44:
-                plugin.getConfig().set("players." + targetId + ".stored_triumph", 0);
-                plugin.getConfig().set("players." + targetId + ".stored_soul", 0);
-                plugin.saveConfig();
+                plugin.getData().set("players." + targetId + ".stored_triumph", 0);
+                plugin.getData().set("players." + targetId + ".stored_soul", 0);
+                plugin.saveData();
                 admin.sendMessage(plugin.PREFIX + ChatColor.RED + "Cleared all Cloud Stars for " + targetName + ".");
                 break;
 
@@ -549,10 +549,10 @@ public class AdminStarGUI implements Listener {
 
     private void modifyCloud(UUID targetId, String type, int delta) {
         String path = "players." + targetId + ".stored_" + type.toLowerCase();
-        int current = plugin.getConfig().getInt(path, 0);
+        int current = plugin.getData().getInt(path, 0);
         int updated = Math.max(0, current + delta);
-        plugin.getConfig().set(path, updated);
-        plugin.saveConfig();
+        plugin.getData().set(path, updated);
+        plugin.saveData();
     }
 
     @EventHandler

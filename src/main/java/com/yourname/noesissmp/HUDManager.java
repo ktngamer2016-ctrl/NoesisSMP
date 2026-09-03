@@ -11,10 +11,12 @@ import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
 
 import java.util.Locale;
+import java.util.logging.Level;
 
 public class HUDManager extends BukkitRunnable {
 
     private final NoesisSMP plugin;
+    private long lastErrorLogTime;
 
     public HUDManager(NoesisSMP plugin) {
         this.plugin = plugin;
@@ -24,7 +26,7 @@ public class HUDManager extends BukkitRunnable {
     public void run() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             try {
-                boolean hudEnabled = plugin.getConfig().getBoolean("players." + player.getUniqueId() + ".hud", true);
+                boolean hudEnabled = plugin.getData().getBoolean("players." + player.getUniqueId() + ".hud", true);
 
                 if (!hudEnabled) {
                     if (player.getScoreboard() != Bukkit.getScoreboardManager().getMainScoreboard()) {
@@ -33,9 +35,11 @@ public class HUDManager extends BukkitRunnable {
                     continue;
                 }
 
-                int maxHearts = (int) (player.getAttribute(Attribute.GENERIC_MAX_HEALTH).getBaseValue() / 2.0);
-                int kills = plugin.getConfig().getInt("players." + player.getUniqueId() + ".kills", 0);
-                int overflow = plugin.getConfig().getInt("players." + player.getUniqueId() + ".overflow", 0);
+                org.bukkit.attribute.AttributeInstance maxHealth = player.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+                if (maxHealth == null) continue;
+                int maxHearts = (int) (maxHealth.getBaseValue() / 2.0);
+                int kills = plugin.getData().getInt("players." + player.getUniqueId() + ".kills", 0);
+                int overflow = plugin.getData().getInt("players." + player.getUniqueId() + ".overflow", 0);
 
                 int totalPoints = kills + overflow;
                 double critChance = totalPoints * 0.8;
@@ -70,7 +74,13 @@ public class HUDManager extends BukkitRunnable {
 
                 if (player.getScoreboard() != board) player.setScoreboard(board);
 
-            } catch (Exception e) {}
+            } catch (Exception exception) {
+                long now = System.currentTimeMillis();
+                if (now - lastErrorLogTime >= 60_000L) {
+                    lastErrorLogTime = now;
+                    plugin.getLogger().log(Level.WARNING, "Could not update the Noesis HUD", exception);
+                }
+            }
         }
     }
 }

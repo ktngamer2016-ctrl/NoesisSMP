@@ -105,8 +105,8 @@ public class AdminGUI implements Listener {
                 player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Spawned 1 Zacrozz's Fragment.");
                 player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 1f); break;
             case 14:
-                plugin.getConfig().set("players." + player.getUniqueId() + ".kills", 100);
-                plugin.saveConfig();
+                plugin.getData().set("players." + player.getUniqueId() + ".kills", 100);
+                plugin.saveData();
                 player.sendMessage(plugin.PREFIX + ChatColor.GOLD + "✨ Your Kill Stack is now MAXED to 100! (60% Crit Chance & VOID Tier Unlocked)");
                 player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
                 break;
@@ -165,7 +165,7 @@ public class AdminGUI implements Listener {
                     player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1.5f);
                 } break;
             case 31:
-                player.closeInventory(); plugin.getConfig().set("players", null); plugin.saveConfig();
+                player.closeInventory(); plugin.getData().set("players", null); plugin.saveData();
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     p.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).setBaseValue(20.0); p.setHealth(20.0);
                     p.playSound(p.getLocation(), Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 1f, 0.5f); p.sendTitle(ChatColor.DARK_RED + "☠ SERVER WIPE ☠", ChatColor.RED + "All stats have been reset.", 10, 70, 20);

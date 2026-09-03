@@ -13,6 +13,7 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -63,7 +64,7 @@ public class AltarGUI implements Listener {
                 ChatColor.GRAY + "Fill the 3x3 grid to accumulate points.",
                 "",
                 ChatColor.RED + "【 Activation Cost 】",
-                ChatColor.GRAY + "- 1x Netherite Block (Catalyst Slot)",
+                ChatColor.GRAY + "- 2x Nether Star (Catalyst Slot)",
                 "",
                 ChatColor.AQUA + "【 Exchange Rates 】",
                 ChatColor.AQUA + "- 7x Diamond Block " + ChatColor.WHITE + "➔ 1 Star",
@@ -111,8 +112,8 @@ public class AltarGUI implements Listener {
     private void processCrafting(Player p, Inventory inv) {
         ItemStack catalyst = inv.getItem(CATALYST_SLOT);
 
-        if (catalyst == null || catalyst.getType() != Material.NETHERITE_BLOCK) {
-            p.sendMessage(plugin.PREFIX + ChatColor.RED + "You must place a Netherite Block in the catalyst slot to activate the Altar!");
+        if (!isValidNetherStarCatalyst(catalyst)) {
+            p.sendMessage(plugin.PREFIX + ChatColor.RED + "You must place 2 Nether Stars in the catalyst slot to activate the Altar!");
             p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
             return;
         }
@@ -169,7 +170,8 @@ public class AltarGUI implements Listener {
         int refundDiamondBlocks = diamondBlocks - usedDiamondBlocks;
         int refundNetheriteIngots = netheriteIngots - usedNetheriteIngots;
 
-        catalyst.setAmount(catalyst.getAmount() - 1);
+        if (catalyst.getAmount() == 2) inv.setItem(CATALYST_SLOT, null);
+        else catalyst.setAmount(catalyst.getAmount() - 2);
 
         sessionCrafted.put(p.getUniqueId(), crafted + totalStars);
 
@@ -193,8 +195,20 @@ public class AltarGUI implements Listener {
 
         p.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Altar activated! Forged " + ChatColor.GOLD + totalStars + "x Triumph Stars! " + ChatColor.GRAY + "(Session: " + ChatColor.YELLOW + (crafted + totalStars) + "/" + MAX_STARS_PER_SESSION + ChatColor.GRAY + ")");
 
-        Location loc = new Location(Bukkit.getWorlds().get(0), 0, 80, 0);
+        Location loc = plugin.getAltarLocation();
         playEpicAltarEffect(loc);
+    }
+
+    private boolean isValidNetherStarCatalyst(ItemStack catalyst) {
+        if (catalyst == null || catalyst.getType() != Material.NETHER_STAR || catalyst.getAmount() < 2) return false;
+        if (!catalyst.hasItemMeta()) return true;
+
+        ItemMeta meta = catalyst.getItemMeta();
+        if (meta.getPersistentDataContainer().has(plugin.starTypeKey, PersistentDataType.STRING)) return false;
+
+        // Also protect legacy custom stars created before their persistent tag existed.
+        String name = ChatColor.stripColor(meta.getDisplayName());
+        return name == null || (!name.contains("Triumph Star") && !name.contains("Soul Star"));
     }
 
     // 🔴 เมธอดสำหรับสร้าง Particle สุดอลังการแบบในภาพ

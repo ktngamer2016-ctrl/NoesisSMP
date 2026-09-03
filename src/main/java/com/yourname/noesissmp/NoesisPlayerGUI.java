@@ -31,11 +31,11 @@ public class NoesisPlayerGUI implements Listener {
     public void openGUI(Player player) {
         Inventory gui = Bukkit.createInventory(null, 27, GUI_TITLE);
 
-        int overflow = plugin.getConfig().getInt("players." + player.getUniqueId() + ".overflow", 0);
-        int storedTriumph = plugin.getConfig().getInt("players." + player.getUniqueId() + ".stored_triumph", 0);
-        int storedSoul = plugin.getConfig().getInt("players." + player.getUniqueId() + ".stored_soul", 0);
-        int kills = plugin.getConfig().getInt("players." + player.getUniqueId() + ".kills", 0);
-        String mode = plugin.getConfig().getString("players." + player.getUniqueId() + ".reward_mode", "auto").toUpperCase();
+        int overflow = plugin.getData().getInt("players." + player.getUniqueId() + ".overflow", 0);
+        int storedTriumph = plugin.getData().getInt("players." + player.getUniqueId() + ".stored_triumph", 0);
+        int storedSoul = plugin.getData().getInt("players." + player.getUniqueId() + ".stored_soul", 0);
+        int kills = plugin.getData().getInt("players." + player.getUniqueId() + ".kills", 0);
+        String mode = plugin.getData().getString("players." + player.getUniqueId() + ".reward_mode", "auto").toUpperCase();
 
         int totalPts = kills + overflow;
         double crit = Math.min(50.0, totalPts * 0.8);
@@ -142,10 +142,10 @@ public class NoesisPlayerGUI implements Listener {
 
         // 1. Convert Overflow
         if (clicked == Material.GOLD_NUGGET) {
-            int overflow = plugin.getConfig().getInt("players." + uuid + ".overflow", 0);
+            int overflow = plugin.getData().getInt("players." + uuid + ".overflow", 0);
             if (overflow > 0) {
-                plugin.getConfig().set("players." + uuid + ".overflow", overflow - 1);
-                plugin.saveConfig();
+                plugin.getData().set("players." + uuid + ".overflow", overflow - 1);
+                plugin.saveData();
                 plugin.giveRewardSmart(player, "triumph", 1);
                 player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
                 openGUI(player);
@@ -156,10 +156,10 @@ public class NoesisPlayerGUI implements Listener {
         }
         // 2. Change Mode
         else if (clicked == Material.COMPASS) {
-            String mode = plugin.getConfig().getString("players." + uuid + ".reward_mode", "auto");
+            String mode = plugin.getData().getString("players." + uuid + ".reward_mode", "auto");
             String nextMode = switch (mode) { case "auto" -> "inv"; case "inv" -> "ec"; case "ec" -> "sys"; default -> "auto"; };
-            plugin.getConfig().set("players." + uuid + ".reward_mode", nextMode);
-            plugin.saveConfig();
+            plugin.getData().set("players." + uuid + ".reward_mode", nextMode);
+            plugin.saveData();
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
             openGUI(player);
         }
@@ -171,7 +171,7 @@ public class NoesisPlayerGUI implements Listener {
         // 4. Claim 1 Star
         else if (clicked == Material.NETHER_STAR) {
             if (event.isLeftClick()) { // Claim Triumph
-                int st = plugin.getConfig().getInt("players." + uuid + ".stored_triumph", 0);
+                int st = plugin.getData().getInt("players." + uuid + ".stored_triumph", 0);
                 if (st > 0) {
                     HashMap<Integer, ItemStack> leftover = player.getInventory().addItem(plugin.createStar("triumph"));
                     if (!leftover.isEmpty()) {
@@ -180,8 +180,8 @@ public class NoesisPlayerGUI implements Listener {
                         player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
                         return;
                     }
-                    plugin.getConfig().set("players." + uuid + ".stored_triumph", st - 1);
-                    plugin.saveConfig();
+                    plugin.getData().set("players." + uuid + ".stored_triumph", st - 1);
+                    plugin.saveData();
                     player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 1f);
                     openGUI(player);
                 } else {
@@ -189,7 +189,7 @@ public class NoesisPlayerGUI implements Listener {
                     player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
                 }
             } else if (event.isRightClick()) { // Claim Soul
-                int ss = plugin.getConfig().getInt("players." + uuid + ".stored_soul", 0);
+                int ss = plugin.getData().getInt("players." + uuid + ".stored_soul", 0);
                 if (ss > 0) {
                     HashMap<Integer, ItemStack> leftover = player.getInventory().addItem(plugin.createStar("soul"));
                     if (!leftover.isEmpty()) {
@@ -198,8 +198,8 @@ public class NoesisPlayerGUI implements Listener {
                         player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
                         return;
                     }
-                    plugin.getConfig().set("players." + uuid + ".stored_soul", ss - 1);
-                    plugin.saveConfig();
+                    plugin.getData().set("players." + uuid + ".stored_soul", ss - 1);
+                    plugin.saveData();
                     player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 1f);
                     openGUI(player);
                 } else {
@@ -210,10 +210,10 @@ public class NoesisPlayerGUI implements Listener {
         }
         // 5. Convert ALL Overflow (Slot 19)
         else if (slot == 19) {
-            int overflow = plugin.getConfig().getInt("players." + uuid + ".overflow", 0);
+            int overflow = plugin.getData().getInt("players." + uuid + ".overflow", 0);
             if (overflow > 0) {
-                plugin.getConfig().set("players." + uuid + ".overflow", 0);
-                plugin.saveConfig();
+                plugin.getData().set("players." + uuid + ".overflow", 0);
+                plugin.saveData();
                 plugin.giveRewardSmart(player, "triumph", overflow);
                 player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Converted all " + overflow + " Overflow into Triumph Stars!");
                 player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.2f);
@@ -225,8 +225,8 @@ public class NoesisPlayerGUI implements Listener {
         }
         // 6. Claim ALL Stars from Cloud (Slot 25)
         else if (slot == 25) {
-            int st = plugin.getConfig().getInt("players." + uuid + ".stored_triumph", 0);
-            int ss = plugin.getConfig().getInt("players." + uuid + ".stored_soul", 0);
+            int st = plugin.getData().getInt("players." + uuid + ".stored_triumph", 0);
+            int ss = plugin.getData().getInt("players." + uuid + ".stored_soul", 0);
             if (st <= 0 && ss <= 0) {
                 player.sendMessage(plugin.PREFIX + ChatColor.RED + "No stars in Cloud Storage!");
                 player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
@@ -251,9 +251,9 @@ public class NoesisPlayerGUI implements Listener {
                 ss--;
                 claimedS++;
             }
-            plugin.getConfig().set("players." + uuid + ".stored_triumph", st);
-            plugin.getConfig().set("players." + uuid + ".stored_soul", ss);
-            plugin.saveConfig();
+            plugin.getData().set("players." + uuid + ".stored_triumph", st);
+            plugin.getData().set("players." + uuid + ".stored_soul", ss);
+            plugin.saveData();
             if (claimedT > 0 || claimedS > 0) {
                 player.sendMessage(plugin.PREFIX + ChatColor.GREEN + "Claimed " + (claimedT + claimedS) + " Stars (" + claimedT + " Triumph, " + claimedS + " Soul) from Cloud!");
                 player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1f, 1f);

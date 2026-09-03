@@ -34,9 +34,9 @@ public class ZoneGUI implements Listener {
 
         Inventory inv = Bukkit.createInventory(null, 45, TITLE);
 
-        String t1 = plugin.getConfig().getString("players." + p.getUniqueId() + ".zone.tier1", "none");
-        String t2 = plugin.getConfig().getString("players." + p.getUniqueId() + ".zone.tier2", "none");
-        String t3 = plugin.getConfig().getString("players." + p.getUniqueId() + ".zone.tier3", "none");
+        String t1 = plugin.getData().getString("players." + p.getUniqueId() + ".zone.tier1", "none");
+        String t2 = plugin.getData().getString("players." + p.getUniqueId() + ".zone.tier2", "none");
+        String t3 = plugin.getData().getString("players." + p.getUniqueId() + ".zone.tier3", "none");
 
         // กระจกพื้นหลัง
         ItemStack glass = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
@@ -45,16 +45,16 @@ public class ZoneGUI implements Listener {
 
         // 🔴 TIER 3 (Top Row)
         inv.setItem(11, createNode(Material.GHAST_TEAR, t3.equals("light"), "&f&lLIGHT: Tier 3",
-                "&7Cost: &615 Triumph Stars", "", "&f▶ Combo Debuff & DMG Boost:", "&7Hit an enemy 3 times to reduce", "&7their SPD & increase your DMG by +3%", "&7(Max 5 Stacks / 15% Boost).", "", getStatusText("light", t3, !t2.equals("none"))));
+                "&7Cost: &615 Triumph Stars", "", "&f▶ Precision Stacks:", "&7Every 3 player hits grants 1 stack.", "&7Stacks boost damage and reduce", "&7the target's attack speed.", "&7Cap: &f15%", "&7Shield offhand: &c10%", "&7Diamond/Netherite offhand: &a25%", "", getStatusText("light", t3, !t2.equals("none"))));
         inv.setItem(15, createNode(Material.TNT, t3.equals("heavy"), "&c&lHEAVY: Tier 3",
-                "&7Cost: &615 Triumph Stars", "", "&c▶ Shockwave Finisher (30s CD):", "&7At 5 Combo Stacks, your next hit", "&7slams nearby enemies down, applying", "&7Slowness 4 (1s) & Slowness 2 (5s),", "&7and seals them in a 10-block domain.", "", getStatusText("heavy", t3, !t2.equals("none"))));
+                "&7Cost: &615 Triumph Stars", "", "&c▶ Shockwave (30s CD):", "&7At 5 stacks, your next hit slams", "&7nearby enemies and traps them", "&7inside a slowing 10-block domain.", "", getStatusText("heavy", t3, !t2.equals("none"))));
 
         // 🔴 TIER 2 (Middle Row)
-        String handMode = plugin.getConfig().getString("players." + p.getUniqueId() + ".zone.hand_mode", "normal");
+        String handMode = plugin.getData().getString("players." + p.getUniqueId() + ".zone.hand_mode", "normal");
         boolean isInverted = handMode.equals("invert");
         inv.setItem(19, createNode(
                 isInverted ? Material.AMETHYST_SHARD : Material.PRISMARINE_SHARD,
-                isInverted,
+                false,
                 isInverted ? "&e&lHand Mode: &bInvert Mode" : "&e&lHand Mode: &aNormal Mode",
                 "&7Current: " + (isInverted ? "&bInvert (Left-Handed)" : "&aNormal (Right-Handed)"),
                 "",
@@ -66,15 +66,15 @@ public class ZoneGUI implements Listener {
         ));
 
         inv.setItem(20, createNode(Material.PHANTOM_MEMBRANE, t2.equals("light"), "&f&lLIGHT: Tier 2",
-                "&7Cost: &610 Triumph Stars", "", "&f▶ Afterimage (20s CD):", "&7Press Offhand [F] with a Sword in Zone", "&7to summon a running afterimage storm,", "&7shredding enemy armor durability continuously (1.5s),", "&7and granting Invisibility (2s) & Speed (1.5s).", "", getStatusText("light", t2, !t1.equals("none"))));
+                "&7Cost: &610 Triumph Stars", "", "&f▶ Afterimage (20s CD):", "&7Press [F] with a Sword in the Zone.", "&7Shield offhand: Invisibility + Speed IV.", "&7Diamond/Netherite offhand: &a+3 range", "", getStatusText("light", t2, !t1.equals("none"))));
         inv.setItem(24, createNode(Material.IRON_AXE, t2.equals("heavy"), "&c&lHEAVY: Tier 2",
-                "&7Cost: &610 Triumph Stars", "", "&c▶ Combo Stack:", "&7Removes ANY attack speed buffs.", "&7Successive charged hits grant", "&7+10% DMG & -3% ATK Speed", "&7(Max 5 Stacks / +50% DMG, -15% SPD).", "&7Missing a swing removes 1 stack.", "", getStatusText("heavy", t2, !t1.equals("none"))));
+                "&7Cost: &610 Triumph Stars", "", "&c▶ Heavy Combo:", "&7Charged hits: &c+10% damage", "&7and &c-3% attack speed &7per stack.", "&7Maximum 5 stacks. Misses lose 1.", "", getStatusText("heavy", t2, !t1.equals("none"))));
 
         // 🔴 TIER 1 (Bottom Row - Core Passive)
         inv.setItem(29, createNode(Material.FEATHER, t1.equals("light"), "&f&lLIGHT: Tier 1 (Core)",
-                "&7Cost: &65 Triumph Stars", "", "&f▶ Passive (Always Active):", "&7+15% ATK Speed. Crits grant", "&7Invisibility & Speed 2 (2s).", "", "&f▶ Perfect Dodge:", "&735% chance to teleport behind attacker", "&7and blind/slow them.", "", getStatusText("light", t1, true)));
+                "&7Cost: &65 Triumph Stars", "", "&f▶ Light Hit:", "&71.75x damage and +15% attack speed.", "&7Hits grant Invisibility + Speed II.", "&7Shield offhand: +5% attack speed, no passive.", "", "&f▶ Perfect Dodge (30s CD):", "&7Tap Sneak, then counter within 0.5s.", "&75 hearts true damage.", "&7Shield offhand: 3 hearts", "&7Best Sword offhand: &a7 hearts", "", getStatusText("light", t1, true)));
         inv.setItem(33, createNode(Material.ANVIL, t1.equals("heavy"), "&c&lHEAVY: Tier 1 (Core)",
-                "&7Cost: &65 Triumph Stars", "", "&c▶ Passive (Always Active):", "&7+50% DMG, -10% ATK Speed.", "&7Permanent Slowness 1.", "", "&c▶ Shield Parry:", "&7Blocking any attack with a shield", "&7stuns and weakens the attacker.", "", getStatusText("heavy", t1, true)));
+                "&7Cost: &65 Triumph Stars", "", "&c▶ Heavy Hit:", "&72x damage with -10% attack speed", "&7and Slowness I.", "", "&c▶ Shield Parry:", "&7Blocking slows and weakens attackers.", "", getStatusText("heavy", t1, true)));
 
         // 🔴 ปุ่ม Reset
         inv.setItem(40, createNode(Material.BARRIER, false, "&4&lRESET SKILL TREE", "&7Reset all nodes and start over.", "&c(Triumph Stars will NOT be refunded!)", "", "&e▶ Click to Reset"));
@@ -117,16 +117,16 @@ public class ZoneGUI implements Listener {
             String uuid = p.getUniqueId().toString();
             int slot = e.getRawSlot();
 
-            String t1 = plugin.getConfig().getString("players." + uuid + ".zone.tier1", "none");
-            String t2 = plugin.getConfig().getString("players." + uuid + ".zone.tier2", "none");
-            String t3 = plugin.getConfig().getString("players." + uuid + ".zone.tier3", "none");
+            String t1 = plugin.getData().getString("players." + uuid + ".zone.tier1", "none");
+            String t2 = plugin.getData().getString("players." + uuid + ".zone.tier2", "none");
+            String t3 = plugin.getData().getString("players." + uuid + ".zone.tier3", "none");
 
             // Hand Mode Toggle
             if (slot == 19) {
-                String currentMode = plugin.getConfig().getString("players." + uuid + ".zone.hand_mode", "normal");
+                String currentMode = plugin.getData().getString("players." + uuid + ".zone.hand_mode", "normal");
                 String nextMode = currentMode.equals("invert") ? "normal" : "invert";
-                plugin.getConfig().set("players." + uuid + ".zone.hand_mode", nextMode);
-                plugin.saveConfig();
+                plugin.getData().set("players." + uuid + ".zone.hand_mode", nextMode);
+                plugin.saveData();
                 p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
                 openGUI(p);
                 return;
@@ -134,18 +134,15 @@ public class ZoneGUI implements Listener {
 
             // รีเซ็ตสกิล
             if (slot == 40) {
-                plugin.getConfig().set("players." + uuid + ".zone.tier1", "none");
-                plugin.getConfig().set("players." + uuid + ".zone.tier2", "none");
-                plugin.getConfig().set("players." + uuid + ".zone.tier3", "none");
-                plugin.saveConfig();
+                plugin.getData().set("players." + uuid + ".zone.tier1", "none");
+                plugin.getData().set("players." + uuid + ".zone.tier2", "none");
+                plugin.getData().set("players." + uuid + ".zone.tier3", "none");
+                plugin.saveData();
                 if (plugin.combatListener != null) {
                     plugin.combatListener.endTheZone(p);
                 }
                 if (p.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_SPEED) != null) {
                     p.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
-                }
-                if (p.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MOVEMENT_SPEED) != null) {
-                    p.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
                 }
                 p.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
                 p.playSound(p.getLocation(), Sound.ENTITY_ITEM_BREAK, 1f, 1f);
@@ -157,8 +154,8 @@ public class ZoneGUI implements Listener {
             if (slot == 29 || slot == 33) {
                 if (!t1.equals("none")) { p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f); return; }
                 if (!consumeStars(p, 5)) { p.sendMessage(plugin.PREFIX + ChatColor.RED + "You need 5 Triumph Stars in your inventory!"); p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f); return; }
-                plugin.getConfig().set("players." + uuid + ".zone.tier1", slot == 29 ? "light" : "heavy");
-                plugin.saveConfig();
+                plugin.getData().set("players." + uuid + ".zone.tier1", slot == 29 ? "light" : "heavy");
+                plugin.saveData();
                 if (plugin.combatListener != null) {
                     plugin.combatListener.updateBaseAttackSpeed(p, slot == 29 ? "light" : "heavy", 0);
                 }
@@ -169,8 +166,8 @@ public class ZoneGUI implements Listener {
                 if (t1.equals("none")) { p.sendMessage(plugin.PREFIX + ChatColor.RED + "You must unlock Tier 1 first!"); p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f); return; }
                 if (!t2.equals("none")) { p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f); return; }
                 if (!consumeStars(p, 10)) { p.sendMessage(plugin.PREFIX + ChatColor.RED + "You need 10 Triumph Stars in your inventory!"); p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f); return; }
-                plugin.getConfig().set("players." + uuid + ".zone.tier2", slot == 20 ? "light" : "heavy");
-                plugin.saveConfig();
+                plugin.getData().set("players." + uuid + ".zone.tier2", slot == 20 ? "light" : "heavy");
+                plugin.saveData();
                 if (plugin.combatListener != null) {
                     plugin.combatListener.updateBaseAttackSpeed(p, t1, 0);
                 }
@@ -181,8 +178,8 @@ public class ZoneGUI implements Listener {
                 if (t2.equals("none")) { p.sendMessage(plugin.PREFIX + ChatColor.RED + "You must unlock Tier 2 first!"); p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f); return; }
                 if (!t3.equals("none")) { p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f); return; }
                 if (!consumeStars(p, 15)) { p.sendMessage(plugin.PREFIX + ChatColor.RED + "You need 15 Triumph Stars in your inventory!"); p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f); return; }
-                plugin.getConfig().set("players." + uuid + ".zone.tier3", slot == 11 ? "light" : "heavy");
-                plugin.saveConfig(); p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f); openGUI(p);
+                plugin.getData().set("players." + uuid + ".zone.tier3", slot == 11 ? "light" : "heavy");
+                plugin.saveData(); p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f); openGUI(p);
             }
         }
     }
@@ -227,17 +224,14 @@ public class ZoneGUI implements Listener {
             if (onlineP.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_SPEED) != null) {
                 onlineP.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_SPEED).setBaseValue(4.0);
             }
-            if (onlineP.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MOVEMENT_SPEED) != null) {
-                onlineP.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1);
-            }
             onlineP.removePotionEffect(org.bukkit.potion.PotionEffectType.SLOWNESS);
         }
 
-        if (plugin.getConfig().contains("players")) {
-            for (String uuidStr : plugin.getConfig().getConfigurationSection("players").getKeys(false)) {
-                String t1 = plugin.getConfig().getString("players." + uuidStr + ".zone.tier1", "none");
-                String t2 = plugin.getConfig().getString("players." + uuidStr + ".zone.tier2", "none");
-                String t3 = plugin.getConfig().getString("players." + uuidStr + ".zone.tier3", "none");
+        if (plugin.getData().contains("players")) {
+            for (String uuidStr : plugin.getData().getConfigurationSection("players").getKeys(false)) {
+                String t1 = plugin.getData().getString("players." + uuidStr + ".zone.tier1", "none");
+                String t2 = plugin.getData().getString("players." + uuidStr + ".zone.tier2", "none");
+                String t3 = plugin.getData().getString("players." + uuidStr + ".zone.tier3", "none");
 
                 int refund = 0;
                 if (!t1.equals("none")) refund += 5;
@@ -245,11 +239,11 @@ public class ZoneGUI implements Listener {
                 if (!t3.equals("none")) refund += 15;
 
                 if (refund > 0) {
-                    int stored = plugin.getConfig().getInt("players." + uuidStr + ".stored_triumph", 0);
-                    plugin.getConfig().set("players." + uuidStr + ".stored_triumph", stored + refund);
-                    plugin.getConfig().set("players." + uuidStr + ".zone.tier1", "none");
-                    plugin.getConfig().set("players." + uuidStr + ".zone.tier2", "none");
-                    plugin.getConfig().set("players." + uuidStr + ".zone.tier3", "none");
+                    int stored = plugin.getData().getInt("players." + uuidStr + ".stored_triumph", 0);
+                    plugin.getData().set("players." + uuidStr + ".stored_triumph", stored + refund);
+                    plugin.getData().set("players." + uuidStr + ".zone.tier1", "none");
+                    plugin.getData().set("players." + uuidStr + ".zone.tier2", "none");
+                    plugin.getData().set("players." + uuidStr + ".zone.tier3", "none");
 
                     boolean sentLive = false;
                     try {
@@ -266,13 +260,14 @@ public class ZoneGUI implements Listener {
                     } catch (Exception ignored) {}
 
                     if (!sentLive) {
-                        int prevPending = plugin.getConfig().getInt("players." + uuidStr + ".pending_zone_refund", 0);
-                        plugin.getConfig().set("players." + uuidStr + ".pending_zone_refund", prevPending + refund);
+                        int prevPending = plugin.getData().getInt("players." + uuidStr + ".pending_zone_refund", 0);
+                        plugin.getData().set("players." + uuidStr + ".pending_zone_refund", prevPending + refund);
                     }
                 }
             }
         }
 
+        plugin.saveData();
         plugin.saveConfig();
     }
 

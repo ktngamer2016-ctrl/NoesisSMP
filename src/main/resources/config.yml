@@ -1,1 +1,65 @@
 # Noesis SMP Config
+
+altar:
+  # Leave world empty to use the server's first loaded world.
+  world: ""
+  x: 0
+  y: 80
+  z: 0
+  open-duration-minutes: 60
+  cooldown-hours: 48
+  bossbar-radius: 100
+  maintain-block: true
+
+settings:
+  drop_at_corpse: true
+  zonetree_enabled: true
+  pve_phase2_threshold: 4
+
+events:
+  # Leave world empty to use the server's first loaded world.
+  world: ""
+
+combat:
+  black-crit:
+    # Total damage dealt inside the Zone required to fill the charge bar to 100%.
+    zone-damage-for-full-charge: 300.0
+  colored-crit:
+    # At this many Yellow/Orange stacks, the next valid hit guarantees the next color.
+    # Red is intentionally excluded because Black Crit uses its own guarantee system.
+    guarantee-next-tier-at-stacks: 12
+  perfect-dodge:
+    timing-window-ms: 500
+    cooldown-seconds: 30
+    missed-attempt-cooldown-ms: 3000
+    counter-window-ms: 500
+    rising-duration-ticks: 8
+    # Ten health points equal five hearts. The triggering counter hit adds no damage.
+    total-true-damage: 10.0
+    rising-damage-share: 0.6
+    uppercut-horizontal-speed: 0.18
+    uppercut-vertical-speed: 0.85
+    slam-horizontal-speed: 0.9
+    slam-vertical-speed: -1.35
+    landing-slow-fall-distance: 2.25
+  light-offhand:
+    shield-attack-speed-bonus: 0.05
+    shield-reversal-true-damage: 6.0
+    shield-afterimage-walk-speed: 0.36
+    shield-tier3-max-effect: 0.10
+    # Diamond receives the full sword buff. Other materials interpolate from
+    # the normal Light values according to these configurable scales.
+    sword-max-reversal-true-damage: 14.0
+    sword-max-afterimage-range-bonus: 3.0
+    sword-max-tier3-effect: 0.25
+    sword-material-scale:
+      wooden: 0.25
+      golden: 0.35
+      stone: 0.50
+      iron: 0.75
+      netherite: 1.00
+      diamond: 1.00
+  light-stack-display:
+    enabled: true
+    height-offset: 0.65
+    update-ticks: 2

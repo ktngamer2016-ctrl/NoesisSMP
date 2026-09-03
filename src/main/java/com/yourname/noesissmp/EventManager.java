@@ -428,7 +428,7 @@ public class EventManager implements Listener {
         currentState = EventState.ACTIVE;
         originalMaxHealthMap.clear();
 
-        Location baseSpawn = Bukkit.getWorlds().get(0).getSpawnLocation();
+        Location baseSpawn = plugin.getEventSpawnLocation();
 
         Map<Integer, Location> teamSpawnLocations = new HashMap<>();
         if (currentCategory == EventCategory.PVP && currentEventType == EventType.TEAM_FIGHT) {
@@ -1003,9 +1003,21 @@ public class EventManager implements Listener {
     }
 
     public void cancelEvent(String reason) {
-        Bukkit.getScheduler().cancelTask(recruitingTaskId); Bukkit.getScheduler().cancelTask(countdownTaskId);
-        Bukkit.getScheduler().cancelTask(teamSelectTaskId); Bukkit.getScheduler().cancelTask(activeTaskId);
+        cancelManagedTasks();
         cleanup(); Bukkit.broadcastMessage(plugin.PREFIX + ChatColor.AQUA + "Event Finished/Cancelled: " + reason);
+    }
+
+    public void shutdown() {
+        cancelManagedTasks();
+        cleanup();
+    }
+
+    private void cancelManagedTasks() {
+        if (recruitingTaskId >= 0) Bukkit.getScheduler().cancelTask(recruitingTaskId);
+        if (countdownTaskId >= 0) Bukkit.getScheduler().cancelTask(countdownTaskId);
+        if (teamSelectTaskId >= 0) Bukkit.getScheduler().cancelTask(teamSelectTaskId);
+        if (activeTaskId >= 0) Bukkit.getScheduler().cancelTask(activeTaskId);
+        recruitingTaskId = countdownTaskId = teamSelectTaskId = activeTaskId = -1;
     }
 
     private void endEvent(String msg) { cancelEvent(msg); }
@@ -1041,7 +1053,6 @@ public class EventManager implements Listener {
         if (pveBossUUID != null) { Entity boss = Bukkit.getEntity(pveBossUUID); if (boss != null && !boss.isDead()) boss.remove(); }
         pveBossUUID = null; currentEventType = null; currentCategory = null; originalMaxHealthMap.clear(); currentState = EventState.INACTIVE;
         joinedPlayers.clear(); readyPlayers.clear(); playerTeams.clear(); bosses.clear();
-        countdownTaskId = -1;
         isTransitioning = false; isChargingSlash = false; isDomainSlash = false;
         hasExploded75 = false; hasExploded50 = false; hasExploded25 = false;
         hasSlash75 = false; hasSlash50 = false; hasSlash25 = false;
